@@ -28,7 +28,8 @@ Compatibility behavior is intentionally asymmetric:
 
 ## Build
 
-Use Java 21:
+The mod targets Java 21 bytecode. The Gradle 9.1 wrapper can itself run on
+Java 25 and will use the configured Java 21 toolchain for compilation:
 
 ```powershell
 .\gradlew.bat clean build
