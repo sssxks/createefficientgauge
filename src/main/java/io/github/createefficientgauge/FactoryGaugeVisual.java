@@ -626,7 +626,6 @@ public final class FactoryGaugeVisual
             : AllPartialModels.FACTORY_PANEL_LIGHT;
     }
 
-    @SuppressWarnings("deprecation")
     private static float customZOffset(Item item) {
         if (!(item instanceof BlockItem blockItem)) {
             return 0;
@@ -634,7 +633,7 @@ public final class FactoryGaugeVisual
         Block block = blockItem.getBlock();
         return block instanceof AbstractSimpleShaftBlock ||
             block instanceof FenceBlock ||
-            block.builtInRegistryHolder().is(BlockTags.BUTTONS) ||
+            block.defaultBlockState().is(BlockTags.BUTTONS) ||
             block == Blocks.END_ROD
             ? -.1f
             : 0;

@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.ItemBlockRenderTypes;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.BakedModel;
@@ -40,6 +40,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.HalfTransparentBlock;
 import net.minecraft.world.level.block.StainedGlassPaneBlock;
+import net.neoforged.neoforge.client.model.data.ModelData;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
@@ -122,19 +123,30 @@ public final class GaugeItemModels {
             !(stack.getItem() instanceof BlockItem blockItem) ||
             (!(blockItem.getBlock() instanceof HalfTransparentBlock) &&
                 !(blockItem.getBlock() instanceof StainedGlassPaneBlock));
-        Material material = ModelUtil.getItemMaterial(
-            ItemBlockRenderTypes.getRenderType(stack, cull)
-        );
-        if (material == null) {
-            material = Materials.TRANSLUCENT_ENTITY;
+        boolean blockItem = stack.getItem() instanceof BlockItem;
+        List<Material> materials = new ArrayList<>();
+        for (BakedModel renderPass : baked.getRenderPasses(stack, cull)) {
+            for (RenderType renderType : renderPass.getRenderTypes(
+                stack,
+                cull
+            )) {
+                Material material = ModelUtil.getItemMaterial(renderType);
+                if (material == null) {
+                    material = Materials.TRANSLUCENT_ENTITY;
+                }
+                if (
+                    blockItem &&
+                    material.transparency() == Transparency.TRANSLUCENT
+                ) {
+                    material = SimpleMaterial.builderOf(material)
+                        .transparency(Transparency.ORDER_INDEPENDENT)
+                        .build();
+                }
+                materials.add(material);
+            }
         }
-        if (
-            stack.getItem() instanceof BlockItem &&
-            material.transparency() == Transparency.TRANSLUCENT
-        ) {
-            material = SimpleMaterial.builderOf(material)
-                .transparency(Transparency.ORDER_INDEPENDENT)
-                .build();
+        if (materials.isEmpty()) {
+            materials.add(Materials.TRANSLUCENT_ENTITY);
         }
         // A BakedModel is shared by many ItemStacks, but ItemColors is allowed
         // to inspect stack components. Put the actual colors in the model key:
@@ -142,7 +154,7 @@ public final class GaugeItemModels {
         // share a mesh baked with the first stack's tint.
         TintPalette tints = resolveTints(stack, analysis.tintIndices());
         return MODELS.get(
-            new ModelKey(baked, material, stack.hasFoil(), tints)
+            new ModelKey(baked, List.copyOf(materials), stack.hasFoil(), tints)
         );
     }
 
@@ -171,7 +183,13 @@ public final class GaugeItemModels {
         RandomSource random = RandomSource.create();
         for (Direction direction : DIRECTIONS) {
             random.setSeed(42L);
-            for (BakedQuad quad : model.getQuads(null, direction, random)) {
+            for (BakedQuad quad : model.getQuads(
+                null,
+                direction,
+                random,
+                ModelData.EMPTY,
+                null
+            )) {
                 if (quad.isTinted()) {
                     tintIndices.add(quad.getTintIndex());
                 }
@@ -211,21 +229,28 @@ public final class GaugeItemModels {
     }
 
     private static PreparedItemModel bakeModel(ModelKey key) {
-        // Foil is a second material pass over the same immutable mesh. It does
-        // not require a second copy of the positions/UVs in native memory.
+        // Every model-defined render type is a material pass over the same
+        // immutable item mesh. Foil adds one glint pass for each render pass,
+        // matching ItemRenderer without duplicating positions/UVs in memory.
         Mesh mesh = MESHES.get(new MeshKey(key.model(), key.tints()));
-        Model model;
-        if (key.foil()) {
-            model = new SimpleModel(
-                List.of(
-                    new Model.ConfiguredMesh(key.material(), mesh),
-                    new Model.ConfiguredMesh(Materials.GLINT, mesh)
-                )
+        if (key.materials().size() == 1 && !key.foil()) {
+            return new PreparedItemModel(
+                new SingleMeshModel(mesh, key.materials().getFirst()),
+                key.model().isGui3d()
             );
-        } else {
-            model = new SingleMeshModel(mesh, key.material());
         }
-        return new PreparedItemModel(model, key.model().isGui3d());
+
+        List<Model.ConfiguredMesh> configured = new ArrayList<>();
+        for (Material material : key.materials()) {
+            configured.add(new Model.ConfiguredMesh(material, mesh));
+            if (key.foil()) {
+                configured.add(new Model.ConfiguredMesh(Materials.GLINT, mesh));
+            }
+        }
+        return new PreparedItemModel(
+            new SimpleModel(List.copyOf(configured)),
+            key.model().isGui3d()
+        );
     }
 
     private static Mesh bakeMesh(MeshKey key) {
@@ -235,10 +260,7 @@ public final class GaugeItemModels {
         // world/slot transform. The half-block translation changes model-space
         // coordinates from [0,1] to Flywheel's centered item convention.
         PoseStack poseStack = new PoseStack();
-        model
-            .getTransforms()
-            .getTransform(ItemDisplayContext.FIXED)
-            .apply(false, poseStack);
+        model.applyTransform(ItemDisplayContext.FIXED, poseStack, false);
         poseStack.translate(-0.5f, -0.5f, -0.5f);
 
         // ModelAnalysis captured the exact quad selection with vanilla's fixed
@@ -347,7 +369,7 @@ public final class GaugeItemModels {
 
     private record ModelKey(
         BakedModel model,
-        Material material,
+        List<Material> materials,
         boolean foil,
         TintPalette tints
     ) {}
