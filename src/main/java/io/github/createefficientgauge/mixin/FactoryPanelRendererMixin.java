@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(FactoryPanelRenderer.class)
 abstract class FactoryPanelRendererMixin {
+
     /**
      * Replaces Create's immediate renderer only when Flywheel reports a usable
      * visualization backend for this level.
@@ -29,20 +30,31 @@ abstract class FactoryPanelRendererMixin {
      * see the complete original Create renderer.</p>
      */
     @Inject(method = "renderSafe", at = @At("HEAD"), cancellable = true)
-    private void createefficientgauge$useRetainedVisual(FactoryPanelBlockEntity blockEntity,
-                                                        float partialTick,
-                                                        PoseStack poseStack,
-                                                        MultiBufferSource buffers,
-                                                        int light,
-                                                        int overlay,
-                                                        CallbackInfo ci) {
-        if (!VisualizationManager.supportsVisualization(blockEntity.getLevel())) {
+    private void createefficientgauge$useRetainedVisual(
+        FactoryPanelBlockEntity blockEntity,
+        float partialTick,
+        PoseStack poseStack,
+        MultiBufferSource buffers,
+        int light,
+        int overlay,
+        CallbackInfo ci
+    ) {
+        if (
+            !VisualizationManager.supportsVisualization(blockEntity.getLevel())
+        ) {
             return;
         }
         // FactoryGaugeVisual owns paths/bulbs/supported items. Render only the
         // deliberately unsupported subset and prevent Create from duplicating
         // every component through MultiBufferSource.
-        GaugeFallbackRenderer.render(blockEntity, partialTick, poseStack, buffers, light, overlay);
+        GaugeFallbackRenderer.render(
+            blockEntity,
+            partialTick,
+            poseStack,
+            buffers,
+            light,
+            overlay
+        );
         ci.cancel();
     }
 }

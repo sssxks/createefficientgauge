@@ -12,6 +12,7 @@ import net.neoforged.fml.loading.FMLEnvironment;
 
 @Mod(CreateEfficientGauge.MOD_ID)
 public final class CreateEfficientGauge {
+
     public static final String MOD_ID = "createefficientgauge";
 
     public CreateEfficientGauge(IEventBus modBus, ModContainer container) {
@@ -29,13 +30,16 @@ public final class CreateEfficientGauge {
         // in parallel with other mods. Flywheel permits replacing a visualizer
         // for a BlockEntityType; Create 6.0.10 does not register one for factory
         // panels, which is the gap this mod fills.
-        event.enqueueWork(() -> SimpleBlockEntityVisualizer
-                .builder((net.minecraft.world.level.block.entity.BlockEntityType<FactoryPanelBlockEntity>) AllBlockEntityTypes.FACTORY_PANEL.get())
+        event.enqueueWork(() ->
+            SimpleBlockEntityVisualizer.builder(
+                (net.minecraft.world.level.block.entity.BlockEntityType<FactoryPanelBlockEntity>) AllBlockEntityTypes.FACTORY_PANEL.get()
+            )
                 .factory(FactoryGaugeVisual::new)
                 // Do not ask Flywheel to skip the whole block-entity renderer.
                 // FactoryPanelRendererMixin makes that decision only while an
                 // actual backend is active and preserves unsupported items.
                 .neverSkipVanillaRender()
-                .apply());
+                .apply()
+        );
     }
 }

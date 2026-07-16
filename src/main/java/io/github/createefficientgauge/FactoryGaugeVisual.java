@@ -1,22 +1,14 @@
 package io.github.createefficientgauge;
 
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Consumer;
-
-import org.jetbrains.annotations.Nullable;
-
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.simibubi.create.AllPartialModels;
+import com.simibubi.create.content.kinetics.simpleRelays.AbstractSimpleShaftBlock;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBehaviour;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlock;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlock.PanelSlot;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelConnection;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelSupportBehaviour;
-import com.simibubi.create.content.kinetics.simpleRelays.AbstractSimpleShaftBlock;
 import com.simibubi.create.content.redstone.displayLink.DisplayLinkBlockEntity;
 import com.simibubi.create.content.redstone.link.RedstoneLinkBlockEntity;
 import dev.engine_room.flywheel.api.instance.Instance;
@@ -36,6 +28,12 @@ import dev.engine_room.flywheel.lib.util.RendererReloadCache;
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual;
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual;
 import dev.engine_room.flywheel.lib.visual.SimpleTickableVisual;
+import io.github.createefficientgauge.GaugeItemModels.PreparedItemModel;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
 import net.createmod.catnip.theme.Color;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.Direction;
@@ -48,8 +46,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.state.BlockState;
-
-import io.github.createefficientgauge.GaugeItemModels.PreparedItemModel;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Retained GPU representation of one Create factory gauge block entity.
@@ -69,16 +66,23 @@ import io.github.createefficientgauge.GaugeItemModels.PreparedItemModel;
  * these instances through its backend without this mod importing Colorwheel or
  * Iris classes.</p>
  */
-public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryPanelBlockEntity>
-        implements SimpleDynamicVisual, SimpleTickableVisual {
+public final class FactoryGaugeVisual
+    extends AbstractBlockEntityVisual<FactoryPanelBlockEntity>
+    implements SimpleDynamicVisual, SimpleTickableVisual
+{
+
     private static final Material ADDITIVE = SimpleMaterial.builder()
-            .transparency(Transparency.ADDITIVE)
-            .backfaceCulling(false)
-            .build();
-    private static final RendererReloadCache<PartialModel, Model> ADDITIVE_MODELS =
-            new RendererReloadCache<>(partial -> new BakedModelBuilder(partial.get())
-                    .materialFunc((renderType, shaded, ambientOcclusion) -> ADDITIVE)
-                    .build());
+        .transparency(Transparency.ADDITIVE)
+        .backfaceCulling(false)
+        .build();
+    private static final RendererReloadCache<
+        PartialModel,
+        Model
+    > ADDITIVE_MODELS = new RendererReloadCache<>(partial ->
+        new BakedModelBuilder(partial.get())
+            .materialFunc((renderType, shaded, ambientOcclusion) -> ADDITIVE)
+            .build()
+    );
 
     // Entries own Flywheel instances and must be explicitly deleted. They are
     // intentionally kept per block entity: Models are shared, instance state is
@@ -89,12 +93,18 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
     // instead of one comparison for every half-block segment in a long path.
     private final List<PathGroup> pathGroups = new ArrayList<>();
     private final List<BulbEntry> bulbs = new ArrayList<>();
-    private final Map<PanelSlot, ItemEntry> items = new EnumMap<>(PanelSlot.class);
+    private final Map<PanelSlot, ItemEntry> items = new EnumMap<>(
+        PanelSlot.class
+    );
     private int topologyHash = Integer.MIN_VALUE;
     private boolean hasAnimatingBulbs = true;
     private boolean pathStylesInitialized;
 
-    public FactoryGaugeVisual(VisualizationContext context, FactoryPanelBlockEntity blockEntity, float partialTick) {
+    public FactoryGaugeVisual(
+        VisualizationContext context,
+        FactoryPanelBlockEntity blockEntity,
+        float partialTick
+    ) {
         super(context, blockEntity, partialTick);
         refreshTopology(true);
         refreshItems();
@@ -136,7 +146,11 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         for (FactoryPanelBehaviour behaviour : blockEntity.panels.values()) {
             if (behaviour.isActive() && behaviour.getAmount() > 0) {
                 hash = 31 * hash + behaviour.slot.ordinal() + 1;
-                hash = 31 * hash + (behaviour.redstonePowered || behaviour.isMissingAddress() ? 1 : 0);
+                hash =
+                    31 * hash +
+                    (behaviour.redstonePowered || behaviour.isMissingAddress()
+                        ? 1
+                        : 0);
             }
         }
         if (!force && hash == topologyHash) {
@@ -151,13 +165,18 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         PathGroup group = null;
         for (PathSpec spec : specs) {
             TransformedInstance instance = instancerProvider()
-                    .instancer(InstanceTypes.TRANSFORMED, Models.partial(spec.partial))
-                    .createInstance();
+                .instancer(
+                    InstanceTypes.TRANSFORMED,
+                    Models.partial(spec.partial)
+                )
+                .createInstance();
             PathEntry entry = new PathEntry(spec, instance);
             paths.add(entry);
             // collectPathSpecs appends every segment of a connection
             // contiguously, so identity comparison is enough to form groups.
-            if (group == null || group.styleSpec.connection != spec.connection) {
+            if (
+                group == null || group.styleSpec.connection != spec.connection
+            ) {
                 group = new PathGroup(spec);
                 pathGroups.add(group);
             }
@@ -172,11 +191,14 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             }
             PartialModel partial = bulbPartial(behaviour);
             TransformedInstance base = instancerProvider()
-                    .instancer(InstanceTypes.TRANSFORMED, Models.partial(partial))
-                    .createInstance();
+                .instancer(InstanceTypes.TRANSFORMED, Models.partial(partial))
+                .createInstance();
             TransformedInstance glow = instancerProvider()
-                    .instancer(InstanceTypes.TRANSFORMED, ADDITIVE_MODELS.get(partial))
-                    .createInstance();
+                .instancer(
+                    InstanceTypes.TRANSFORMED,
+                    ADDITIVE_MODELS.get(partial)
+                )
+                .createInstance();
             bulbs.add(new BulbEntry(behaviour, partial, base, glow));
         }
         // New instance handles have no submitted state yet. Force one update
@@ -194,30 +216,53 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             }
             hash = 31 * hash + behaviour.slot.ordinal();
             for (FactoryPanelConnection connection : behaviour.targetedBy.values()) {
-                hash = 31 * hash + connectionTopologyHash(behaviour, connection, state);
+                hash =
+                    31 * hash +
+                    connectionTopologyHash(behaviour, connection, state);
             }
             for (FactoryPanelConnection connection : behaviour.targetedByLinks.values()) {
-                hash = 31 * hash + connectionTopologyHash(behaviour, connection, state);
+                hash =
+                    31 * hash +
+                    connectionTopologyHash(behaviour, connection, state);
             }
         }
         return hash;
     }
 
-    private int connectionTopologyHash(FactoryPanelBehaviour behaviour,
-                                       FactoryPanelConnection connection,
-                                       BlockState state) {
+    private int connectionTopologyHash(
+        FactoryPanelBehaviour behaviour,
+        FactoryPanelConnection connection,
+        BlockState state
+    ) {
         // FactoryPanelConnection caches its path and mutates that list only when
         // arrowBendMode changes. The path is otherwise a deterministic function
         // of from/to, block orientation and that bend mode, so hashing those
         // inputs avoids walking every Direction element on every client tick.
-        List<Direction> path = connection.getPath(level, state, behaviour.getPanelPosition());
-        FactoryPanelSupportBehaviour support = FactoryPanelBehaviour.linkAt(level, connection);
+        List<Direction> path = connection.getPath(
+            level,
+            state,
+            behaviour.getPanelPosition()
+        );
+        FactoryPanelSupportBehaviour support = FactoryPanelBehaviour.linkAt(
+            level,
+            connection
+        );
         int hash = System.identityHashCode(connection);
         hash = 31 * hash + connection.from.hashCode();
         hash = 31 * hash + connection.arrowBendMode;
         hash = 31 * hash + path.size();
-        hash = 31 * hash + (support != null && support.blockEntity instanceof DisplayLinkBlockEntity ? 1 : 0);
-        hash = 31 * hash + (support != null && support.blockEntity instanceof RedstoneLinkBlockEntity ? 1 : 0);
+        hash =
+            31 * hash +
+            (support != null &&
+            support.blockEntity instanceof DisplayLinkBlockEntity
+                ? 1
+                : 0);
+        hash =
+            31 * hash +
+            (support != null &&
+            support.blockEntity instanceof RedstoneLinkBlockEntity
+                ? 1
+                : 0);
         hash = 31 * hash + (support != null && !support.isOutput() ? 1 : 0);
         return hash;
     }
@@ -242,12 +287,27 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         return result;
     }
 
-    private void appendPath(List<PathSpec> out, FactoryPanelBehaviour behaviour,
-                            FactoryPanelConnection connection, BlockState state) {
-        List<Direction> path = connection.getPath(level, state, behaviour.getPanelPosition());
-        FactoryPanelSupportBehaviour support = FactoryPanelBehaviour.linkAt(level, connection);
-        boolean display = support != null && support.blockEntity instanceof DisplayLinkBlockEntity;
-        boolean redstone = support != null && support.blockEntity instanceof RedstoneLinkBlockEntity;
+    private void appendPath(
+        List<PathSpec> out,
+        FactoryPanelBehaviour behaviour,
+        FactoryPanelConnection connection,
+        BlockState state
+    ) {
+        List<Direction> path = connection.getPath(
+            level,
+            state,
+            behaviour.getPanelPosition()
+        );
+        FactoryPanelSupportBehaviour support = FactoryPanelBehaviour.linkAt(
+            level,
+            connection
+        );
+        boolean display =
+            support != null &&
+            support.blockEntity instanceof DisplayLinkBlockEntity;
+        boolean redstone =
+            support != null &&
+            support.blockEntity instanceof RedstoneLinkBlockEntity;
         boolean reversed = support != null && !support.isOutput();
         float currentX = 0;
         float currentZ = 0;
@@ -260,11 +320,26 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             // Create puts the arrow at the logical source. Reversed support-link
             // connections therefore select the last physical segment instead.
             boolean arrow = reversed ? i == path.size() - 1 : i == 0;
-            PartialModel partial = (display ? AllPartialModels.FACTORY_PANEL_DOTTED
-                    : arrow ? AllPartialModels.FACTORY_PANEL_ARROWS : AllPartialModels.FACTORY_PANEL_LINES)
-                    .get(reversed ? direction : direction.getOpposite());
-            out.add(new PathSpec(behaviour, connection, partial, direction, currentX, currentZ,
-                    display, redstone, reversed));
+            PartialModel partial = (
+                display
+                    ? AllPartialModels.FACTORY_PANEL_DOTTED
+                    : arrow
+                      ? AllPartialModels.FACTORY_PANEL_ARROWS
+                      : AllPartialModels.FACTORY_PANEL_LINES
+            ).get(reversed ? direction : direction.getOpposite());
+            out.add(
+                new PathSpec(
+                    behaviour,
+                    connection,
+                    partial,
+                    direction,
+                    currentX,
+                    currentZ,
+                    display,
+                    redstone,
+                    reversed
+                )
+            );
             if (reversed) {
                 currentX += direction.getStepX() * .5f;
                 currentZ += direction.getStepZ() * .5f;
@@ -282,8 +357,10 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             // third time while positioning; that repeated work for every slot
             // on every client tick even though all three answers came from the
             // same resolved BakedModel.
-            PreparedItemModel prepared = behaviour.isActive() && !stack.isEmpty()
-                    ? GaugeItemModels.getSupported(level, stack) : null;
+            PreparedItemModel prepared =
+                behaviour.isActive() && !stack.isEmpty()
+                    ? GaugeItemModels.getSupported(level, stack)
+                    : null;
             boolean supported = prepared != null;
             ItemEntry old = items.get(behaviour.slot);
             if (!supported) {
@@ -296,14 +373,24 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             Model model = prepared.model();
             if (old == null) {
                 TransformedInstance instance = instancerProvider()
-                        .instancer(InstanceTypes.TRANSFORMED, model)
-                        .createInstance();
-                old = new ItemEntry(behaviour, stack.copy(), model, prepared.gui3d(), instance);
+                    .instancer(InstanceTypes.TRANSFORMED, model)
+                    .createInstance();
+                old = new ItemEntry(
+                    behaviour,
+                    stack.copy(),
+                    model,
+                    prepared.gui3d(),
+                    instance
+                );
                 items.put(behaviour.slot, old);
-            } else if (!ItemStack.matches(old.stack, stack) || old.model != model) {
+            } else if (
+                !ItemStack.matches(old.stack, stack) || old.model != model
+            ) {
                 // stealInstance keeps the instance handle/state while moving it
                 // to the instancer for a newly resolved mesh/material.
-                instancerProvider().instancer(InstanceTypes.TRANSFORMED, model).stealInstance(old.instance);
+                instancerProvider()
+                    .instancer(InstanceTypes.TRANSFORMED, model)
+                    .stealInstance(old.instance);
                 old.stack = stack.copy();
                 old.model = model;
                 old.gui3d = prepared.gui3d();
@@ -311,7 +398,9 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             positionItem(old);
         }
         items.entrySet().removeIf(entry -> {
-            FactoryPanelBehaviour behaviour = blockEntity.panels.get(entry.getKey());
+            FactoryPanelBehaviour behaviour = blockEntity.panels.get(
+                entry.getKey()
+            );
             if (behaviour != null) {
                 return false;
             }
@@ -323,18 +412,30 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
     private void positionItem(ItemEntry entry) {
         FactoryPanelBehaviour behaviour = entry.behaviour;
         PoseStack pose = new PoseStack();
-        pose.translate(getVisualPosition().getX(), getVisualPosition().getY(), getVisualPosition().getZ());
+        pose.translate(
+            getVisualPosition().getX(),
+            getVisualPosition().getY(),
+            getVisualPosition().getZ()
+        );
         // Reproduce ValueBoxTransform followed by ValueBoxRenderer's inner item
         // scale and depth offset. Gauge mounting rotation is already encoded in
         // the slot positioning object supplied by Create.
-        behaviour.getSlotPositioning().transform(level, pos, blockEntity.getBlockState(), pose);
+        behaviour
+            .getSlotPositioning()
+            .transform(level, pos, blockEntity.getBlockState(), pose);
         boolean blockItem = entry.gui3d;
         float scale = (blockItem ? 1f : .5f) + 1f / 64f;
         pose.scale(scale, scale, scale);
-        pose.translate(0, 0, (blockItem ? 0 : -.15f) + customZOffset(entry.stack.getItem()));
+        pose.translate(
+            0,
+            0,
+            (blockItem ? 0 : -.15f) + customZOffset(entry.stack.getItem())
+        );
         entry.instance.setTransform(pose);
         entry.instance.light(computePackedLight());
-        entry.instance.overlay(net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY);
+        entry.instance.overlay(
+            net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY
+        );
         entry.instance.setChanged();
     }
 
@@ -351,7 +452,11 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         }
     }
 
-    private void updateBulbs(float partialTick, int light, boolean forceSettled) {
+    private void updateBulbs(
+        float partialTick,
+        int light,
+        boolean forceSettled
+    ) {
         if (!forceSettled && !hasAnimatingBulbs) {
             return;
         }
@@ -365,15 +470,25 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             }
             PartialModel current = bulbPartial(bulb.behaviour);
             if (current != bulb.partial) {
-                instancerProvider().instancer(InstanceTypes.TRANSFORMED, Models.partial(current))
-                        .stealInstance(bulb.base);
-                instancerProvider().instancer(InstanceTypes.TRANSFORMED, ADDITIVE_MODELS.get(current))
-                        .stealInstance(bulb.glow);
+                instancerProvider()
+                    .instancer(
+                        InstanceTypes.TRANSFORMED,
+                        Models.partial(current)
+                    )
+                    .stealInstance(bulb.base);
+                instancerProvider()
+                    .instancer(
+                        InstanceTypes.TRANSFORMED,
+                        ADDITIVE_MODELS.get(current)
+                    )
+                    .stealInstance(bulb.glow);
                 bulb.partial = current;
             }
             float glowValue = bulb.behaviour.bulb.getValue(partialTick);
             transformBulb(bulb.base, bulb.behaviour);
-            bulb.base.light(glowValue > .125f ? LightTexture.FULL_BRIGHT : light);
+            bulb.base.light(
+                glowValue > .125f ? LightTexture.FULL_BRIGHT : light
+            );
             bulb.base.setChanged();
 
             if (glowValue < .125f) {
@@ -391,11 +506,19 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         hasAnimatingBulbs = stillAnimating;
     }
 
-    private void updatePathStyles(float partialTick, int light, boolean forceSettled) {
+    private void updatePathStyles(
+        float partialTick,
+        int light,
+        boolean forceSettled
+    ) {
         for (PathGroup group : pathGroups) {
             // Only the bulb lerp can change a path style between client ticks.
             // Once it settles, the tick-side forced refresh above owns updates.
-            if (!forceSettled && group.initialized && group.styleSpec.behaviour.bulb.settled()) {
+            if (
+                !forceSettled &&
+                group.initialized &&
+                group.styleSpec.behaviour.bulb.settled()
+            ) {
                 continue;
             }
             PathStyle style = pathStyle(group.styleSpec, partialTick);
@@ -412,16 +535,24 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         pathStylesInitialized = true;
     }
 
-    private void transformBulb(TransformedInstance instance, FactoryPanelBehaviour behaviour) {
+    private void transformBulb(
+        TransformedInstance instance,
+        FactoryPanelBehaviour behaviour
+    ) {
         BlockState state = blockEntity.getBlockState();
         // Transform order mirrors FactoryPanelRenderer.renderBulb exactly. The
         // visual position is relative to Flywheel's movable render origin.
-        instance.setIdentityTransform()
-                .translate(getVisualPosition())
-                .rotateYCentered(FactoryPanelBlock.getYRot(state))
-                .rotateXCentered(FactoryPanelBlock.getXRot(state) + Mth.PI / 2)
-                .rotateYCentered(Mth.PI)
-                .translate(behaviour.slot.xOffset * .5f, 0, behaviour.slot.yOffset * .5f);
+        instance
+            .setIdentityTransform()
+            .translate(getVisualPosition())
+            .rotateYCentered(FactoryPanelBlock.getYRot(state))
+            .rotateXCentered(FactoryPanelBlock.getXRot(state) + Mth.PI / 2)
+            .rotateYCentered(Mth.PI)
+            .translate(
+                behaviour.slot.xOffset * .5f,
+                0,
+                behaviour.slot.yOffset * .5f
+            );
     }
 
     private void transformPath(PathEntry entry, PathStyle style) {
@@ -431,14 +562,18 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         float parity = (spec.direction.get2DDataValue() % 2) * .125f;
         // Keep the tiny parity offset used by Create to prevent perpendicular
         // connection pieces from z-fighting at turns.
-        entry.instance.setIdentityTransform()
-                .translate(getVisualPosition())
-                .rotateYCentered(FactoryPanelBlock.getYRot(state))
-                .rotateXCentered(FactoryPanelBlock.getXRot(state) + Mth.PI / 2)
-                .rotateYCentered(Mth.PI)
-                .translate(behaviour.slot.xOffset * .5f + .25f, 0,
-                        behaviour.slot.yOffset * .5f + .25f)
-                .translate(spec.x, (style.yOffset + parity) / 512f, spec.z);
+        entry.instance
+            .setIdentityTransform()
+            .translate(getVisualPosition())
+            .rotateYCentered(FactoryPanelBlock.getYRot(state))
+            .rotateXCentered(FactoryPanelBlock.getXRot(state) + Mth.PI / 2)
+            .rotateYCentered(Mth.PI)
+            .translate(
+                behaviour.slot.xOffset * .5f + .25f,
+                0,
+                behaviour.slot.yOffset * .5f + .25f
+            )
+            .translate(spec.x, (style.yOffset + parity) / 512f, spec.z);
         entry.instance.colorRgb(style.color);
     }
 
@@ -451,17 +586,33 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         }
         if (spec.redstone) {
             int color = spec.reversed
-                    ? (behaviour.count == 0 ? 0x888898 : behaviour.satisfied ? 0xEF0000 : 0x580101)
-                    : (behaviour.redstonePowered ? 0xEF0000 : 0x580101);
+                ? behaviour.count == 0
+                    ? 0x888898
+                    : behaviour.satisfied
+                      ? 0xEF0000
+                      : 0x580101
+                : behaviour.redstonePowered
+                  ? 0xEF0000
+                  : 0x580101;
             return new PathStyle(color, .5f);
         }
 
         int color = behaviour.getIngredientStatusColor();
-        float yOffset = 1 + (behaviour.promisedSatisfied ? 1 : behaviour.satisfied ? 0 : 2);
+        float yOffset =
+            1 + (behaviour.promisedSatisfied ? 1 : behaviour.satisfied ? 0 : 2);
         float glow = behaviour.bulb.getValue(partialTick);
-        if (!behaviour.redstonePowered && !behaviour.waitingForNetwork && glow > 0 && !behaviour.satisfied) {
+        if (
+            !behaviour.redstonePowered &&
+            !behaviour.waitingForNetwork &&
+            glow > 0 &&
+            !behaviour.satisfied
+        ) {
             float progress = 1 - (1 - glow) * (1 - glow);
-            color = Color.mixColors(color, spec.connection.success ? 0xEAF2EC : 0xE5654B, progress);
+            color = Color.mixColors(
+                color,
+                spec.connection.success ? 0xEAF2EC : 0xE5654B,
+                progress
+            );
             if (!behaviour.promisedSatisfied) {
                 yOffset += (spec.connection.success ? 1 : 2) * progress;
             }
@@ -471,8 +622,8 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
 
     private static PartialModel bulbPartial(FactoryPanelBehaviour behaviour) {
         return behaviour.redstonePowered || behaviour.isMissingAddress()
-                ? AllPartialModels.FACTORY_PANEL_RED_LIGHT
-                : AllPartialModels.FACTORY_PANEL_LIGHT;
+            ? AllPartialModels.FACTORY_PANEL_RED_LIGHT
+            : AllPartialModels.FACTORY_PANEL_LIGHT;
     }
 
     @SuppressWarnings("deprecation")
@@ -481,10 +632,12 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             return 0;
         }
         Block block = blockItem.getBlock();
-        return block instanceof AbstractSimpleShaftBlock
-                || block instanceof FenceBlock
-                || block.builtInRegistryHolder().is(BlockTags.BUTTONS)
-                || block == Blocks.END_ROD ? -.1f : 0;
+        return block instanceof AbstractSimpleShaftBlock ||
+            block instanceof FenceBlock ||
+            block.builtInRegistryHolder().is(BlockTags.BUTTONS) ||
+            block == Blocks.END_ROD
+            ? -.1f
+            : 0;
     }
 
     @Override
@@ -497,7 +650,9 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
     }
 
     @Override
-    public void collectCrumblingInstances(Consumer<@Nullable Instance> consumer) {
+    public void collectCrumblingInstances(
+        Consumer<@Nullable Instance> consumer
+    ) {
         // Only geometry attached to the block should receive breaking overlay.
         // The additive glow is an emitted effect and is intentionally excluded.
         paths.forEach(path -> consumer.accept(path.instance));
@@ -518,15 +673,22 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         items.clear();
     }
 
-    private record PathSpec(FactoryPanelBehaviour behaviour, FactoryPanelConnection connection,
-                            PartialModel partial, Direction direction, float x, float z,
-                            boolean display, boolean redstone, boolean reversed) {
-    }
+    private record PathSpec(
+        FactoryPanelBehaviour behaviour,
+        FactoryPanelConnection connection,
+        PartialModel partial,
+        Direction direction,
+        float x,
+        float z,
+        boolean display,
+        boolean redstone,
+        boolean reversed
+    ) {}
 
-    private record PathEntry(PathSpec spec, TransformedInstance instance) {
-    }
+    private record PathEntry(PathSpec spec, TransformedInstance instance) {}
 
     private static final class PathGroup {
+
         private final PathSpec styleSpec;
         private final List<PathEntry> entries = new ArrayList<>();
         private int lastColor = Integer.MIN_VALUE;
@@ -539,9 +701,11 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         }
 
         private boolean hasState(PathStyle style, int light) {
-            return lastColor == style.color
-                    && lastYOffsetBits == Float.floatToIntBits(style.yOffset)
-                    && lastLight == light;
+            return (
+                lastColor == style.color &&
+                lastYOffsetBits == Float.floatToIntBits(style.yOffset) &&
+                lastLight == light
+            );
         }
 
         private void rememberState(PathStyle style, int light) {
@@ -552,18 +716,22 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         }
     }
 
-    private record PathStyle(int color, float yOffset) {
-    }
+    private record PathStyle(int color, float yOffset) {}
 
     private static final class BulbEntry {
+
         private final FactoryPanelBehaviour behaviour;
         private PartialModel partial;
         private final TransformedInstance base;
         private final TransformedInstance glow;
         private boolean initialized;
 
-        private BulbEntry(FactoryPanelBehaviour behaviour, PartialModel partial,
-                          TransformedInstance base, TransformedInstance glow) {
+        private BulbEntry(
+            FactoryPanelBehaviour behaviour,
+            PartialModel partial,
+            TransformedInstance base,
+            TransformedInstance glow
+        ) {
             this.behaviour = behaviour;
             this.partial = partial;
             this.base = base;
@@ -577,14 +745,20 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
     }
 
     private static final class ItemEntry {
+
         private final FactoryPanelBehaviour behaviour;
         private ItemStack stack;
         private Model model;
         private boolean gui3d;
         private final TransformedInstance instance;
 
-        private ItemEntry(FactoryPanelBehaviour behaviour, ItemStack stack, Model model, boolean gui3d,
-                          TransformedInstance instance) {
+        private ItemEntry(
+            FactoryPanelBehaviour behaviour,
+            ItemStack stack,
+            Model model,
+            boolean gui3d,
+            TransformedInstance instance
+        ) {
             this.behaviour = behaviour;
             this.stack = stack;
             this.model = model;
