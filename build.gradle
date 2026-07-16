@@ -18,6 +18,32 @@ repositories {
     maven { url = 'https://raw.githubusercontent.com/Fuzss/modresources/main/maven/' }
 }
 
+def withoutLocalMod = providers.gradleProperty('withoutLocalMod')
+        .map { it.toBoolean() }
+        .getOrElse(false)
+
+// A control run needs a runtime classpath that contains the mod dependencies
+// without also containing main's split classes/resources output. Otherwise FML
+// discovers neoforge.mods.toml in build/resources/main, but cannot load the
+// corresponding mixin classes from build/classes/java/main as a mod module.
+if (withoutLocalMod) {
+    sourceSets {
+        control {
+            java.setSrcDirs([])
+            resources.setSrcDirs([])
+        }
+    }
+
+    configurations {
+        controlImplementation.extendsFrom(implementation)
+        controlRuntimeOnly.extendsFrom(runtimeOnly)
+    }
+
+    configurations.matching { it.name == 'modDevRuntimeDependencies' }.all {
+        configurations.controlRuntimeClasspath.extendsFrom(it)
+    }
+}
+
 neoForge {
     version = neo_version
 
@@ -29,6 +55,11 @@ neoForge {
     runs {
         client {
             client()
+
+            if (withoutLocalMod) {
+                sourceSet = sourceSets.control
+                loadedMods = []
+            }
 
             // Keep the conventional run/ directory by default, but allow an
             // isolated copy for automated compatibility checks. Using Gradle's
