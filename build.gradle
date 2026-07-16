@@ -27,7 +27,23 @@ neoForge {
     }
 
     runs {
-        client { client() }
+        client {
+            client()
+
+            // Keep the conventional run/ directory by default, but allow an
+            // isolated copy for automated compatibility checks. Using Gradle's
+            // generic `runClient --args` option is not safe with NeoForge's
+            // DevLaunch main-class argument, so expose these through the run
+            // model where they are appended in the correct position.
+            def clientDir = providers.gradleProperty('clientGameDirectory').getOrElse('run')
+            gameDirectory = layout.projectDirectory.dir(clientDir)
+
+            def quickPlayWorld = providers.gradleProperty('quickPlaySingleplayer')
+            if (quickPlayWorld.isPresent()) {
+                programArgument('--quickPlaySingleplayer')
+                programArgument(quickPlayWorld.get())
+            }
+        }
     }
 
     mods {

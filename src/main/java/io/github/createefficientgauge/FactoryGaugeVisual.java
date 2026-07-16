@@ -49,6 +49,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
+import io.github.createefficientgauge.GaugeItemModels.PreparedItemModel;
+
 /**
  * Retained GPU representation of one Create factory gauge block entity.
  *
@@ -82,9 +84,15 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
     // intentionally kept per block entity: Models are shared, instance state is
     // not. Factory gauges contain at most four panel behaviours.
     private final List<PathEntry> paths = new ArrayList<>();
+    // All segments of one connection share color, status-row offset and light.
+    // Grouping them lets a stable connection perform one comparison per frame
+    // instead of one comparison for every half-block segment in a long path.
+    private final List<PathGroup> pathGroups = new ArrayList<>();
     private final List<BulbEntry> bulbs = new ArrayList<>();
     private final Map<PanelSlot, ItemEntry> items = new EnumMap<>(PanelSlot.class);
     private int topologyHash = Integer.MIN_VALUE;
+    private boolean hasAnimatingBulbs = true;
+    private boolean pathStylesInitialized;
 
     public FactoryGaugeVisual(VisualizationContext context, FactoryPanelBlockEntity blockEntity, float partialTick) {
         super(context, blockEntity, partialTick);
@@ -111,18 +119,20 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         // changes and avoids model resolution on every rendered frame.
         refreshTopology(false);
         refreshItems();
+        // Discrete behaviour/connection state changes are tick-driven. Refresh
+        // every group here so settled paths do not need polling every rendered
+        // frame (or again for every shader shadow pass).
+        int light = computePackedLight();
+        updateBulbs(0, light, true);
+        updatePathStyles(0, light, true);
     }
 
     private void refreshTopology(boolean force) {
-        List<PathSpec> specs = collectPathSpecs();
-        // Hash the complete render-relevant topology. When only status color or
-        // bulb interpolation changes, the hash remains stable and existing GPU
-        // instances are reused. A changed path/model deletes and recreates only
-        // this gauge's small instance set.
-        int hash = 1;
-        for (PathSpec spec : specs) {
-            hash = 31 * hash + spec.hashCode();
-        }
+        // Compute a cheap connection-level fingerprint before flattening paths.
+        // A test wall can contain tens of thousands of half-block segments;
+        // allocating one PathSpec for every segment merely to discover that the
+        // topology is unchanged costs more than updating the retained geometry.
+        int hash = computeTopologyHash();
         for (FactoryPanelBehaviour behaviour : blockEntity.panels.values()) {
             if (behaviour.isActive() && behaviour.getAmount() > 0) {
                 hash = 31 * hash + behaviour.slot.ordinal() + 1;
@@ -133,14 +143,25 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             return;
         }
         topologyHash = hash;
+        List<PathSpec> specs = collectPathSpecs();
 
         paths.forEach(entry -> entry.instance.delete());
         paths.clear();
+        pathGroups.clear();
+        PathGroup group = null;
         for (PathSpec spec : specs) {
             TransformedInstance instance = instancerProvider()
                     .instancer(InstanceTypes.TRANSFORMED, Models.partial(spec.partial))
                     .createInstance();
-            paths.add(new PathEntry(spec, instance));
+            PathEntry entry = new PathEntry(spec, instance);
+            paths.add(entry);
+            // collectPathSpecs appends every segment of a connection
+            // contiguously, so identity comparison is enough to form groups.
+            if (group == null || group.styleSpec.connection != spec.connection) {
+                group = new PathGroup(spec);
+                pathGroups.add(group);
+            }
+            group.entries.add(entry);
         }
 
         bulbs.forEach(BulbEntry::delete);
@@ -158,6 +179,47 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
                     .createInstance();
             bulbs.add(new BulbEntry(behaviour, partial, base, glow));
         }
+        // New instance handles have no submitted state yet. Force one update
+        // even if Create's lerp is already settled at zero or one.
+        hasAnimatingBulbs = true;
+        pathStylesInitialized = false;
+    }
+
+    private int computeTopologyHash() {
+        int hash = 31 + blockEntity.getBlockState().hashCode();
+        BlockState state = blockEntity.getBlockState();
+        for (FactoryPanelBehaviour behaviour : blockEntity.panels.values()) {
+            if (!behaviour.isActive()) {
+                continue;
+            }
+            hash = 31 * hash + behaviour.slot.ordinal();
+            for (FactoryPanelConnection connection : behaviour.targetedBy.values()) {
+                hash = 31 * hash + connectionTopologyHash(behaviour, connection, state);
+            }
+            for (FactoryPanelConnection connection : behaviour.targetedByLinks.values()) {
+                hash = 31 * hash + connectionTopologyHash(behaviour, connection, state);
+            }
+        }
+        return hash;
+    }
+
+    private int connectionTopologyHash(FactoryPanelBehaviour behaviour,
+                                       FactoryPanelConnection connection,
+                                       BlockState state) {
+        // FactoryPanelConnection caches its path and mutates that list only when
+        // arrowBendMode changes. The path is otherwise a deterministic function
+        // of from/to, block orientation and that bend mode, so hashing those
+        // inputs avoids walking every Direction element on every client tick.
+        List<Direction> path = connection.getPath(level, state, behaviour.getPanelPosition());
+        FactoryPanelSupportBehaviour support = FactoryPanelBehaviour.linkAt(level, connection);
+        int hash = System.identityHashCode(connection);
+        hash = 31 * hash + connection.from.hashCode();
+        hash = 31 * hash + connection.arrowBendMode;
+        hash = 31 * hash + path.size();
+        hash = 31 * hash + (support != null && support.blockEntity instanceof DisplayLinkBlockEntity ? 1 : 0);
+        hash = 31 * hash + (support != null && support.blockEntity instanceof RedstoneLinkBlockEntity ? 1 : 0);
+        hash = 31 * hash + (support != null && !support.isOutput() ? 1 : 0);
+        return hash;
     }
 
     private List<PathSpec> collectPathSpecs() {
@@ -215,8 +277,14 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
             ItemStack stack = behaviour.getFilter();
             // A missing ItemEntry is meaningful: the conditional renderer mixin
             // will draw unsupported stacks with Create's ValueBoxRenderer.
-            boolean supported = behaviour.isActive() && !stack.isEmpty()
-                    && GaugeItemModels.isSupported(level, stack);
+            // Resolve once here. The previous implementation called
+            // ItemRenderer#getModel in isSupported(), again in get(), and a
+            // third time while positioning; that repeated work for every slot
+            // on every client tick even though all three answers came from the
+            // same resolved BakedModel.
+            PreparedItemModel prepared = behaviour.isActive() && !stack.isEmpty()
+                    ? GaugeItemModels.getSupported(level, stack) : null;
+            boolean supported = prepared != null;
             ItemEntry old = items.get(behaviour.slot);
             if (!supported) {
                 if (old != null) {
@@ -225,12 +293,12 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
                 }
                 continue;
             }
-            Model model = GaugeItemModels.get(level, stack);
+            Model model = prepared.model();
             if (old == null) {
                 TransformedInstance instance = instancerProvider()
                         .instancer(InstanceTypes.TRANSFORMED, model)
                         .createInstance();
-                old = new ItemEntry(behaviour, stack.copy(), model, instance);
+                old = new ItemEntry(behaviour, stack.copy(), model, prepared.gui3d(), instance);
                 items.put(behaviour.slot, old);
             } else if (!ItemStack.matches(old.stack, stack) || old.model != model) {
                 // stealInstance keeps the instance handle/state while moving it
@@ -238,6 +306,7 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
                 instancerProvider().instancer(InstanceTypes.TRANSFORMED, model).stealInstance(old.instance);
                 old.stack = stack.copy();
                 old.model = model;
+                old.gui3d = prepared.gui3d();
             }
             positionItem(old);
         }
@@ -259,7 +328,7 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         // scale and depth offset. Gauge mounting rotation is already encoded in
         // the slot positioning object supplied by Create.
         behaviour.getSlotPositioning().transform(level, pos, blockEntity.getBlockState(), pose);
-        boolean blockItem = GaugeItemModels.resolve(level, entry.stack).isGui3d();
+        boolean blockItem = entry.gui3d;
         float scale = (blockItem ? 1f : .5f) + 1f / 64f;
         pose.scale(scale, scale, scale);
         pose.translate(0, 0, (blockItem ? 0 : -.15f) + customZOffset(entry.stack.getItem()));
@@ -273,7 +342,27 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         // This method never creates vertex data. A frame updates only compact
         // instance records consumed by whichever Flywheel backend is active.
         int light = computePackedLight();
+        // Capture the pre-update value so the frame in which the final bulb
+        // settles also submits the path's final interpolated color/offset.
+        boolean animatePaths = hasAnimatingBulbs || !pathStylesInitialized;
+        updateBulbs(partialTick, light, false);
+        if (animatePaths) {
+            updatePathStyles(partialTick, light, false);
+        }
+    }
+
+    private void updateBulbs(float partialTick, int light, boolean forceSettled) {
+        if (!forceSettled && !hasAnimatingBulbs) {
+            return;
+        }
+
+        boolean stillAnimating = false;
         for (BulbEntry bulb : bulbs) {
+            boolean settled = bulb.behaviour.bulb.settled();
+            stillAnimating |= !settled;
+            if (!forceSettled && bulb.initialized && settled) {
+                continue;
+            }
             PartialModel current = bulbPartial(bulb.behaviour);
             if (current != bulb.partial) {
                 instancerProvider().instancer(InstanceTypes.TRANSFORMED, Models.partial(current))
@@ -297,13 +386,30 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
                 bulb.glow.light(LightTexture.FULL_BRIGHT);
                 bulb.glow.setChanged();
             }
+            bulb.initialized = true;
         }
+        hasAnimatingBulbs = stillAnimating;
+    }
 
-        for (PathEntry path : paths) {
-            transformPath(path, partialTick);
-            path.instance.light(light);
-            path.instance.setChanged();
+    private void updatePathStyles(float partialTick, int light, boolean forceSettled) {
+        for (PathGroup group : pathGroups) {
+            // Only the bulb lerp can change a path style between client ticks.
+            // Once it settles, the tick-side forced refresh above owns updates.
+            if (!forceSettled && group.initialized && group.styleSpec.behaviour.bulb.settled()) {
+                continue;
+            }
+            PathStyle style = pathStyle(group.styleSpec, partialTick);
+            if (group.hasState(style, light)) {
+                continue;
+            }
+            for (PathEntry path : group.entries) {
+                transformPath(path, style);
+                path.instance.light(light);
+                path.instance.setChanged();
+            }
+            group.rememberState(style, light);
         }
+        pathStylesInitialized = true;
     }
 
     private void transformBulb(TransformedInstance instance, FactoryPanelBehaviour behaviour) {
@@ -318,11 +424,10 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
                 .translate(behaviour.slot.xOffset * .5f, 0, behaviour.slot.yOffset * .5f);
     }
 
-    private void transformPath(PathEntry entry, float partialTick) {
+    private void transformPath(PathEntry entry, PathStyle style) {
         PathSpec spec = entry.spec;
         FactoryPanelBehaviour behaviour = spec.behaviour;
         BlockState state = blockEntity.getBlockState();
-        PathStyle style = pathStyle(spec, partialTick);
         float parity = (spec.direction.get2DDataValue() % 2) * .125f;
         // Keep the tiny parity offset used by Create to prevent perpendicular
         // connection pieces from z-fighting at turns.
@@ -384,9 +489,11 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
 
     @Override
     public void updateLight(float partialTick) {
-        // Flywheel calls this when the containing light section changes. Running
-        // animate also refreshes FULL_BRIGHT bulb decisions consistently.
-        animate(partialTick);
+        // A section-light callback must update settled instances immediately;
+        // it cannot wait for the next client tick's forced refresh.
+        int light = computePackedLight();
+        updateBulbs(partialTick, light, true);
+        updatePathStyles(partialTick, light, true);
     }
 
     @Override
@@ -406,6 +513,7 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         bulbs.forEach(BulbEntry::delete);
         items.values().forEach(item -> item.instance.delete());
         paths.clear();
+        pathGroups.clear();
         bulbs.clear();
         items.clear();
     }
@@ -418,6 +526,32 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
     private record PathEntry(PathSpec spec, TransformedInstance instance) {
     }
 
+    private static final class PathGroup {
+        private final PathSpec styleSpec;
+        private final List<PathEntry> entries = new ArrayList<>();
+        private int lastColor = Integer.MIN_VALUE;
+        private int lastYOffsetBits = Integer.MIN_VALUE;
+        private int lastLight = Integer.MIN_VALUE;
+        private boolean initialized;
+
+        private PathGroup(PathSpec styleSpec) {
+            this.styleSpec = styleSpec;
+        }
+
+        private boolean hasState(PathStyle style, int light) {
+            return lastColor == style.color
+                    && lastYOffsetBits == Float.floatToIntBits(style.yOffset)
+                    && lastLight == light;
+        }
+
+        private void rememberState(PathStyle style, int light) {
+            lastColor = style.color;
+            lastYOffsetBits = Float.floatToIntBits(style.yOffset);
+            lastLight = light;
+            initialized = true;
+        }
+    }
+
     private record PathStyle(int color, float yOffset) {
     }
 
@@ -426,6 +560,7 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         private PartialModel partial;
         private final TransformedInstance base;
         private final TransformedInstance glow;
+        private boolean initialized;
 
         private BulbEntry(FactoryPanelBehaviour behaviour, PartialModel partial,
                           TransformedInstance base, TransformedInstance glow) {
@@ -445,13 +580,15 @@ public final class FactoryGaugeVisual extends AbstractBlockEntityVisual<FactoryP
         private final FactoryPanelBehaviour behaviour;
         private ItemStack stack;
         private Model model;
+        private boolean gui3d;
         private final TransformedInstance instance;
 
-        private ItemEntry(FactoryPanelBehaviour behaviour, ItemStack stack, Model model,
+        private ItemEntry(FactoryPanelBehaviour behaviour, ItemStack stack, Model model, boolean gui3d,
                           TransformedInstance instance) {
             this.behaviour = behaviour;
             this.stack = stack;
             this.model = model;
+            this.gui3d = gui3d;
             this.instance = instance;
         }
     }

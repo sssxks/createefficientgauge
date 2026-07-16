@@ -17,6 +17,12 @@ abstract class FactoryPanelRendererMixin {
      * Replaces Create's immediate renderer only when Flywheel reports a usable
      * visualization backend for this level.
      *
+     * <p>{@code supportsVisualization} is a public Flywheel API method, not a
+     * predicate supplied by this mod. Flywheel's implementation checks that a
+     * backend is on, that this is a client level, and that the level is the
+     * active Minecraft level (or explicitly implements {@code VisualizationLevel}).
+     * It does not decide whether an individual item model is supported.</p>
+     *
      * <p>The condition is the compatibility boundary. If Flywheel is disabled,
      * Iris has no compatible backend, or a virtual level refuses visualization,
      * the method returns without cancelling. CreateBetterFPS and Flerovium then

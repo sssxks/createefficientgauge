@@ -27,6 +27,21 @@ $env:JAVA_HOME = 'path-to-jdk-21'
 .\gradlew.bat runClient
 ```
 
+The checked-in wrapper scripts honor `JAVA_HOME`. Do not launch Gradle 8.12.1
+on Java 25 for this project; task creation can fail before Minecraft starts.
+
+For a disposable game directory or an automated single-player smoke test, use
+the run-model properties instead of Gradle's generic `--args` replacement:
+
+```powershell
+.\gradlew.bat runClient `
+  -PclientGameDirectory=build/diagnostic-run `
+  -PquickPlaySingleplayer=New_World
+```
+
+Without `clientGameDirectory`, the client still uses the repository's `run/`
+directory, including its `mods`, shader configuration, and saves.
+
 The build declares Flywheel 1.0.6 as an explicit `runtimeOnly` dependency.
 Ponder 1.0.82 still requests Flywheel 1.0.4 in its Maven metadata; without the
 explicit runtime constraint, Gradle can launch the development client with 1.0.4
@@ -51,7 +66,8 @@ Test all of these situations because they exercise different branches:
 | Flywheel/Colorwheel backend active | Paths, bulbs, ordinary items are instances |
 | Backend disabled/unavailable | Complete original Create renderer runs |
 | Ordinary JSON/baked filter item | Item is retained and rendered once per slot |
-| Tinted item | Item is drawn by Create's original value-box path |
+| Generated/tinted JSON item | Tint is correct and the item is retained |
+| Stack-component-dependent tint | Different stacks keep different colors |
 | BEWLR/custom-rendered item | Item is drawn by Create's original value-box path |
 | Filter item changes | New model appears within one game tick |
 | Connection added/removed | Segment instance set updates within one game tick |

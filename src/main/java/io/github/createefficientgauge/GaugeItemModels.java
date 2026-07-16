@@ -3,12 +3,17 @@ package io.github.createefficientgauge;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -47,24 +52,24 @@ import net.minecraft.world.level.block.StainedGlassPaneBlock;
 
 /**
  * Resource-reload-aware baked item mesh cache. The baking approach follows
- * Flywheel's Vanillin item visual, but deliberately rejects tinted and exotic
- * models so those items retain their original renderer.
+ * Flywheel's Vanillin item visual. Static JSON models, including Minecraft's
+ * generated/tinted item layers, become shared Flywheel meshes; procedural
+ * models retain their original renderer.
  */
 public final class GaugeItemModels {
     // Minecraft asks baked models for culled faces one Direction at a time and
     // for unculled faces with a null direction. Omitting the final null entry is
     // a common item-baking bug that makes crossed/flat geometry disappear.
-    private static final Model EMPTY_MODEL = new SimpleModel(List.of());
     private static final Direction[] DIRECTIONS = {
             Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH,
             Direction.WEST, Direction.EAST, null
     };
     private static final RendererReloadCache<MeshKey, Mesh> MESHES =
-            new RendererReloadCache<>(key -> bakeMesh(key.model()));
-    private static final RendererReloadCache<ModelKey, Model> MODELS =
+            new RendererReloadCache<>(GaugeItemModels::bakeMesh);
+    private static final RendererReloadCache<ModelKey, PreparedItemModel> MODELS =
             new RendererReloadCache<>(GaugeItemModels::bakeModel);
-    private static final RendererReloadCache<BakedModel, Boolean> SUPPORT =
-            new RendererReloadCache<>(GaugeItemModels::inspectSupport);
+    private static final RendererReloadCache<BakedModel, ModelAnalysis> ANALYSES =
+            new RendererReloadCache<>(GaugeItemModels::analyze);
 
     private GaugeItemModels() {
     }
@@ -81,16 +86,25 @@ public final class GaugeItemModels {
     }
 
     public static boolean isSupported(Level level, ItemStack stack) {
-        return stack.isEmpty() || SUPPORT.get(resolve(level, stack));
+        return stack.isEmpty() || ANALYSES.get(resolve(level, stack)).supported();
     }
 
-    public static Model get(Level level, ItemStack stack) {
+    /**
+     * Resolves and prepares one filter item for retained rendering.
+     *
+     * <p>The nullable return is intentional. Both the tick-side visual and the
+     * frame-side fallback use the same {@link #isSupported(Level, ItemStack)}
+     * policy, so a slot can never be drawn by both paths or by neither path.</p>
+     */
+    @Nullable
+    public static PreparedItemModel getSupported(Level level, ItemStack stack) {
         if (stack.isEmpty()) {
-            return EMPTY_MODEL;
+            return null;
         }
         BakedModel baked = resolve(level, stack);
-        if (!SUPPORT.get(baked)) {
-            return EMPTY_MODEL;
+        ModelAnalysis analysis = ANALYSES.get(baked);
+        if (!analysis.supported()) {
+            return null;
         }
 
         boolean cull = !(stack.getItem() instanceof BlockItem blockItem)
@@ -105,15 +119,20 @@ public final class GaugeItemModels {
                     .transparency(Transparency.ORDER_INDEPENDENT)
                     .build();
         }
-        return MODELS.get(new ModelKey(baked, material, stack.hasFoil()));
+        // A BakedModel is shared by many ItemStacks, but ItemColors is allowed
+        // to inspect stack components. Put the actual colors in the model key:
+        // two leather items (or two potion-like mod items) must not accidentally
+        // share a mesh baked with the first stack's tint.
+        TintPalette tints = resolveTints(stack, analysis.tintIndices());
+        return MODELS.get(new ModelKey(baked, material, stack.hasFoil(), tints));
     }
 
-    private static boolean inspectSupport(BakedModel model) {
+    private static ModelAnalysis analyze(BakedModel model) {
         // Custom renderers can issue arbitrary draw calls, render block entities,
         // or depend on time/player state. A static Flywheel mesh cannot preserve
         // those semantics, so ValueBoxRenderer must handle them.
         if (model.isCustomRenderer()) {
-            return false;
+            return ModelAnalysis.unsupported(model);
         }
         // Equality is deliberate. A subclass or forwarding wrapper can change
         // getQuads(), render types, model data, or lifecycle behavior. Rejecting
@@ -121,37 +140,58 @@ public final class GaugeItemModels {
         // item's custom rendering behavior.
         Class<?> type = model.getClass();
         if (type != SimpleBakedModel.class && type != MultiPartBakedModel.class && type != WeightedBakedModel.class) {
-            return false;
+            return ModelAnalysis.unsupported(model);
         }
+
+        List<BakedQuad> quads = new ArrayList<>();
+        Set<Integer> tintIndices = new HashSet<>();
         RandomSource random = RandomSource.create();
         for (Direction direction : DIRECTIONS) {
             random.setSeed(42L);
             for (BakedQuad quad : model.getQuads(null, direction, random)) {
                 if (quad.isTinted()) {
-                    // Tint colors depend on ItemStack and sometimes the level.
-                    // This first implementation caches geometry by BakedModel,
-                    // so baking a tint here would incorrectly share it between
-                    // different stacks. Use vanilla until tint is part of key.
-                    return false;
+                    tintIndices.add(quad.getTintIndex());
                 }
+                quads.add(quad);
             }
         }
-        return true;
+        return new ModelAnalysis(model, List.copyOf(quads), Set.copyOf(tintIndices), true);
     }
 
-    private static Model bakeModel(ModelKey key) {
+    private static TintPalette resolveTints(ItemStack stack, Set<Integer> tintIndices) {
+        if (tintIndices.isEmpty()) {
+            return TintPalette.NONE;
+        }
+
+        Map<Integer, Integer> colors = new HashMap<>();
+        for (int tintIndex : tintIndices) {
+            int argb = Minecraft.getInstance().getItemColors().getColor(stack, tintIndex);
+            // ItemColors uses -1 for opaque white. Omitting white entries keeps
+            // ordinary generated items on the smallest, commonly shared key.
+            if (argb != -1) {
+                colors.put(tintIndex, argb);
+            }
+        }
+        return colors.isEmpty() ? TintPalette.NONE : new TintPalette(Map.copyOf(colors));
+    }
+
+    private static PreparedItemModel bakeModel(ModelKey key) {
         // Foil is a second material pass over the same immutable mesh. It does
         // not require a second copy of the positions/UVs in native memory.
-        Mesh mesh = MESHES.get(new MeshKey(key.model()));
+        Mesh mesh = MESHES.get(new MeshKey(key.model(), key.tints()));
+        Model model;
         if (key.foil()) {
-            return new SimpleModel(List.of(
+            model = new SimpleModel(List.of(
                     new Model.ConfiguredMesh(key.material(), mesh),
                     new Model.ConfiguredMesh(Materials.GLINT, mesh)));
+        } else {
+            model = new SingleMeshModel(mesh, key.material());
         }
-        return new SingleMeshModel(mesh, key.material());
+        return new PreparedItemModel(model, key.model().isGui3d());
     }
 
-    private static Mesh bakeMesh(BakedModel model) {
+    private static Mesh bakeMesh(MeshKey key) {
+        BakedModel model = key.model();
         // ValueBoxRenderer uses ItemDisplayContext.FIXED. Applying the same model
         // transform while baking lets every later instance use only the gauge's
         // world/slot transform. The half-block translation changes model-space
@@ -160,14 +200,10 @@ public final class GaugeItemModels {
         model.getTransforms().getTransform(ItemDisplayContext.FIXED).apply(false, poseStack);
         poseStack.translate(-0.5f, -0.5f, -0.5f);
 
-        RandomSource random = RandomSource.create();
-        List<BakedQuad> quads = new ArrayList<>();
-        for (Direction direction : DIRECTIONS) {
-            // Vanilla resets this seed before every face query. Weighted/random
-            // baked models must see exactly that sequence to match ItemRenderer.
-            random.setSeed(42L);
-            quads.addAll(model.getQuads(null, direction, random));
-        }
+        // ModelAnalysis captured the exact quad selection with vanilla's fixed
+        // random seed. Reuse it here instead of asking a weighted model to make
+        // a second (potentially different) selection while the mesh is baked.
+        List<BakedQuad> quads = ANALYSES.get(model).quads();
 
         int vertexCount = quads.size() * 4;
         // Flywheel uploads FullVertexView to the backend and its tracked memory
@@ -189,6 +225,13 @@ public final class GaugeItemModels {
             IntBuffer ints = bytes.asIntBuffer();
             int vertex = 0;
             for (BakedQuad quad : quads) {
+                int color = quad.isTinted()
+                        ? key.tints().colors().getOrDefault(quad.getTintIndex(), -1)
+                        : -1;
+                float red = ((color >>> 16) & 0xff) / 255f;
+                float green = ((color >>> 8) & 0xff) / 255f;
+                float blue = (color & 0xff) / 255f;
+                float alpha = ((color >>> 24) & 0xff) / 255f;
                 int[] data = quad.getVertices();
                 Direction direction = quad.getDirection();
                 normal.set(direction.getStepX(), direction.getStepY(), direction.getStepZ()).mul(normalPose);
@@ -203,10 +246,14 @@ public final class GaugeItemModels {
                     vertices.x(vertex, position.x());
                     vertices.y(vertex, position.y());
                     vertices.z(vertex, position.z());
-                    vertices.r(vertex, 1);
-                    vertices.g(vertex, 1);
-                    vertices.b(vertex, 1);
-                    vertices.a(vertex, 1);
+                    // ItemRenderer passes this same ARGB ItemColors result to
+                    // every vertex of the tinted quad. FullVertexView exposes
+                    // normalized RGBA channels, so unpack instead of using the
+                    // ABGR packed form expected by Sodium's direct writer.
+                    vertices.r(vertex, red);
+                    vertices.g(vertex, green);
+                    vertices.b(vertex, blue);
+                    vertices.a(vertex, alpha);
                     vertices.u(vertex, bytes.getFloat(16));
                     vertices.v(vertex, bytes.getFloat(20));
                     vertices.overlay(vertex, OverlayTexture.NO_OVERLAY);
@@ -221,9 +268,23 @@ public final class GaugeItemModels {
         return new SimpleQuadMesh(vertices);
     }
 
-    private record MeshKey(BakedModel model) {
+    public record PreparedItemModel(Model model, boolean gui3d) {
     }
 
-    private record ModelKey(BakedModel model, Material material, boolean foil) {
+    private record ModelAnalysis(BakedModel model, List<BakedQuad> quads,
+                                 Set<Integer> tintIndices, boolean supported) {
+        private static ModelAnalysis unsupported(BakedModel model) {
+            return new ModelAnalysis(model, List.of(), Set.of(), false);
+        }
+    }
+
+    private record TintPalette(Map<Integer, Integer> colors) {
+        private static final TintPalette NONE = new TintPalette(Map.of());
+    }
+
+    private record MeshKey(BakedModel model, TintPalette tints) {
+    }
+
+    private record ModelKey(BakedModel model, Material material, boolean foil, TintPalette tints) {
     }
 }
