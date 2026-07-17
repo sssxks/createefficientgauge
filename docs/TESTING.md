@@ -83,6 +83,60 @@ Flywheel/Iris integration backend at a time.
 Profile after the world and shader pack have stabilized. First-frame resource
 baking is expected and should not be compared with steady-state frames.
 
+### Automatic slow-frame JFR workflow
+
+On JDK 25 or newer, the mod can automatically keep a bounded rolling JFR
+recording for client-frame diagnosis. It traces these exact frame phases:
+
+- `Minecraft.runTick`, which is the complete client frame;
+- `GameRenderer.render`, which covers CPU-side scene rendering;
+- `Window.updateDisplay`, including the GLFW buffer swap/presentation call; and
+- `Minecraft.tick`, which covers the client game tick.
+
+Java and native stack samples can then be correlated by timestamp with an exact
+slow-frame interval. Allocation sampling is disabled because it adds data volume
+without helping a frame-pacing investigation.
+
+Enable it once in `.minecraft/config/createefficientgauge-client.toml`:
+
+```toml
+[slowFrameJfr]
+enabled = true
+```
+
+Alternatively, add this JVM argument to the Minecraft launcher profile:
+
+```text
+-Dcreateefficientgauge.jfr=true
+```
+
+The recorder starts automatically during client setup. By default it keeps a
+rolling ten-minute/128 MiB window, saves a snapshot every ten minutes, keeps at
+most six completed recordings, and writes the final window when Minecraft exits.
+Recordings are written under:
+
+```text
+.minecraft/debug/profiling/createefficientgauge/
+```
+
+The first two seconds after method tracing starts are instrumentation warm-up and
+should be ignored. The included analyzer does that automatically:
+
+```powershell
+& "$env:JAVA_HOME\bin\java.exe" `
+  tools/jfr/JfrFramePhaseAnalyzer.java `
+  'path\to\slowframes-session-YYYY-MM-DD_HH-mm-ss.jfr'
+```
+
+The analyzer prints the longest traced frames, separates render, presentation,
+and client-tick time, and prints Java/native render-thread samples from the most
+useful outliers. Because the default method threshold is 10 ms, its percentile
+summary describes traced slow frames, not all frames rendered during the session.
+
+All retention, sampling, and threshold values can be changed in the same client
+configuration. Exact `jdk.MethodTrace` events were introduced in JDK 25; on an
+older runtime the mod logs a warning and leaves profiling disabled.
+
 With a backend active, a successful profile should show little or no steady
 state time in:
 

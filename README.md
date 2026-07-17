@@ -24,7 +24,8 @@ Compatibility behavior is intentionally asymmetric:
 - [Rendering architecture](docs/ARCHITECTURE.md) explains the lifecycle split,
   selective renderer mixin, item support policy, and compatibility invariants.
 - [Testing and profiling](docs/TESTING.md) contains the development client,
-  functional test matrix, and expected profiler changes.
+  functional test matrix, expected profiler changes, and the optional automatic
+  JDK 25 slow-frame JFR workflow.
 
 ## Build
 
