@@ -1,0 +1,21 @@
+plugins {
+    id 'application'
+}
+
+group = 'io.github.createefficientgauge'
+version = '0.1.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'io.github.frameprofiler.analyzer.JfrFramePhaseAnalyzer'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}

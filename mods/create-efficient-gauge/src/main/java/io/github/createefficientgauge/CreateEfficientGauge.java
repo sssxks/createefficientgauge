@@ -5,9 +5,7 @@ import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntit
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 
@@ -16,13 +14,12 @@ public final class CreateEfficientGauge {
 
     public static final String MOD_ID = "createefficientgauge";
 
-    public CreateEfficientGauge(IEventBus modBus, ModContainer container) {
+    public CreateEfficientGauge(IEventBus modBus) {
         // This jar is client-side functionality, but NeoForge still constructs
         // the @Mod entry point while discovering mods. Keep every reference to
         // Minecraft renderer classes behind the physical-side check so merely
         // placing the jar on a dedicated server does not class-load them.
         if (FMLEnvironment.dist == Dist.CLIENT) {
-            container.registerConfig(ModConfig.Type.CLIENT, SlowFrameJfrConfig.SPEC);
             modBus.addListener(CreateEfficientGauge::clientSetup);
         }
     }
@@ -42,11 +39,6 @@ public final class CreateEfficientGauge {
                 // actual backend is active and preserves unsupported items.
                 .neverSkipVanillaRender()
                 .apply();
-
-            // Optional and disabled by default. Starting during client setup
-            // places MethodTrace's one-time instrumentation work before normal
-            // world play instead of injecting it on the first profiled frame.
-            SlowFrameJfrProfiler.start();
         });
     }
 }

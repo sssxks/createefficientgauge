@@ -1,3 +1,5 @@
+package io.github.frameprofiler.analyzer;
+
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;

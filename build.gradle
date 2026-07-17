@@ -1,122 +1,24 @@
 plugins {
-    id 'java-library'
-    id 'net.neoforged.moddev' version '2.0.141'
+    id 'base'
 }
 
-version = mod_version
-group = mod_group_id
-
-base {
-    archivesName = "${mod_id}-${minecraft_version}"
+tasks.register('buildMods') {
+    group = 'build'
+    description = 'Builds every independently distributable mod jar.'
+    dependsOn(
+        ':mods:create-efficient-gauge:build',
+        ':mods:minecraft-frame-profiler:build'
+    )
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
-
-repositories {
-    maven { url = 'https://maven.createmod.net' }
-    maven { url = 'https://maven.ithundxr.dev/snapshots' }
-    maven { url = 'https://raw.githubusercontent.com/Fuzss/modresources/main/maven/' }
+tasks.named('build') {
+    dependsOn('buildMods', ':tools:jfr-analyzer:build')
 }
 
-def withoutLocalMod = providers.gradleProperty('withoutLocalMod')
-        .map { it.toBoolean() }
-        .getOrElse(false)
-
-// A control run needs a runtime classpath that contains the mod dependencies
-// without also containing main's split classes/resources output. Otherwise FML
-// discovers neoforge.mods.toml in build/resources/main, but cannot load the
-// corresponding mixin classes from build/classes/java/main as a mod module.
-if (withoutLocalMod) {
-    sourceSets {
-        control {
-            java.setSrcDirs([])
-            resources.setSrcDirs([])
-        }
-    }
-
-    configurations {
-        controlImplementation.extendsFrom(implementation)
-        controlRuntimeOnly.extendsFrom(runtimeOnly)
-    }
-
-    configurations.matching { it.name == 'modDevRuntimeDependencies' }.all {
-        configurations.controlRuntimeClasspath.extendsFrom(it)
-    }
-}
-
-neoForge {
-    version = neo_version
-
-    parchment {
-        minecraftVersion = parchment_minecraft_version
-        mappingsVersion = parchment_mappings_version
-    }
-
-    runs {
-        client {
-            client()
-
-            if (withoutLocalMod) {
-                sourceSet = sourceSets.control
-                loadedMods = []
-            }
-
-            // Keep the conventional run/ directory by default, but allow an
-            // isolated copy for automated compatibility checks. Using Gradle's
-            // generic `runClient --args` option is not safe with NeoForge's
-            // DevLaunch main-class argument, so expose these through the run
-            // model where they are appended in the correct position.
-            def clientDir = providers.gradleProperty('clientGameDirectory').getOrElse('run')
-            gameDirectory = layout.projectDirectory.dir(clientDir)
-
-            def quickPlayWorld = providers.gradleProperty('quickPlaySingleplayer')
-            if (quickPlayWorld.isPresent()) {
-                programArgument('--quickPlaySingleplayer')
-                programArgument(quickPlayWorld.get())
-            }
-        }
-    }
-
-    mods {
-        "${mod_id}" { sourceSet(sourceSets.main) }
-    }
-}
-
-dependencies {
-    // 6.0.10-281 is the Maven publication corresponding to the public
-    // Create 6.0.10 release (the user-facing mod version omits build 281).
-    implementation("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
-
-    // The API artifact is sufficient to compile Flywheel visuals. Add the full
-    // implementation at runtime as well: Ponder 1.0.82 requests Flywheel 1.0.4,
-    // while released Create 6.0.10 embeds/requires 1.0.6. Without this explicit
-    // constraint a Gradle dev run can select 1.0.4 before Create's JarJar copy is
-    // considered, even though a normal installed Create jar supplies 1.0.6.
-    compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
-    runtimeOnly("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
-
-    // These libraries are bundled by Create in production. They are direct dev
-    // dependencies here so javac and runClient have a complete, readable graph.
-    implementation("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
-    implementation("com.tterrag.registrate:Registrate:${registrate_version}")
-    implementation("fuzs.forgeconfigapiport:forgeconfigapiport-common-neoforgeapi:${forgeconfigapiport_version}")
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
-    options.release = 21
-    options.compilerArgs.add('-Xlint:deprecation')
-}
-
-tasks.named('jar', Jar) {
-    from('LICENSE')
-}
-
-processResources {
-    def props = [mod_id: mod_id, mod_name: mod_name, mod_version: mod_version,
-                 mod_authors: mod_authors, mod_description: mod_description,
-                 mod_license: mod_license, minecraft_version: minecraft_version,
-                 neo_version: neo_version]
-    inputs.properties(props)
-    filesMatching('META-INF/neoforge.mods.toml') { expand(props) }
+tasks.named('clean') {
+    dependsOn(
+        ':mods:create-efficient-gauge:clean',
+        ':mods:minecraft-frame-profiler:clean',
+        ':tools:jfr-analyzer:clean'
+    )
 }

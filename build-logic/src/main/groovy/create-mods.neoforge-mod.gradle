@@ -1,0 +1,36 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev'
+}
+
+group = 'io.github.createefficientgauge'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+neoForge {
+    version = providers.gradleProperty('neo_version').get()
+    validateAccessTransformers = true
+
+    parchment {
+        minecraftVersion = providers
+            .gradleProperty('parchment_minecraft_version')
+            .get()
+        mappingsVersion = providers
+            .gradleProperty('parchment_mappings_version')
+            .get()
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+    options.compilerArgs.add('-Xlint:deprecation')
+}
+
+tasks.named('jar', Jar) {
+    from(rootProject.file('LICENSE'))
+}

@@ -1,43 +1,30 @@
-# Create Efficient Gauge
+# Create Mod Suite
 
-Client-side NeoForge 1.21.1 optimization mod for the released Create 6.0.10
-factory gauges. The build uses Maven artifact `6.0.10-281`, whose internal and
-user-facing mod version is `6.0.10`.
+This Gradle multi-project build contains independently distributable NeoForge
+client mods and their development tools.
 
-Factory gauge paths, bulbs, and conservative ordinary baked item models are
-represented as retained Flywheel instances. With Colorwheel or another active
-Flywheel backend this avoids rebuilding and submitting the same quad lists for
-every gauge on every frame.
+## Projects
 
-Compatibility behavior is intentionally asymmetric:
+- [Create Efficient Gauge](mods/create-efficient-gauge/README.md) retains
+  Create factory-gauge rendering through Flywheel.
+- [Minecraft Frame Profiler](mods/minecraft-frame-profiler/README.md) records a
+  bounded rolling JFR window for diagnosing slow client frames.
+- `tools/jfr-analyzer` analyzes recordings produced by the profiler.
 
-- With an active visualization backend, supported content is instanced.
-- Custom-rendered, tinted, and unusual wrapped item models use Create's original
-  `ItemRenderer` path.
-- Without an active visualization backend, Create's complete renderer is left
-  untouched so CreateBetterFPS/Flerovium can continue to optimize it.
-- The mod uses only the standard Flywheel API and has no direct Colorwheel or
-  Iris dependency.
-
-## Documentation
-
-- [Rendering architecture](docs/ARCHITECTURE.md) explains the lifecycle split,
-  selective renderer mixin, item support policy, and compatibility invariants.
-- [Testing and profiling](docs/TESTING.md) contains the development client,
-  functional test matrix, expected profiler changes, and the optional automatic
-  JDK 25 slow-frame JFR workflow.
+The mods do not depend on each other. The integration client run loads both for
+development convenience.
 
 ## Build
 
-The mod targets Java 21 bytecode. The Gradle 9.1 wrapper can itself run on
-Java 25 and will use the configured Java 21 toolchain for compilation:
-
 ```powershell
-.\gradlew.bat clean build
+.\gradlew.bat build
 ```
 
-The mod jar is written to `build/libs`.
+Individual artifacts can be built with:
 
-The development runtime pins Flywheel 1.0.6 explicitly. Ponder 1.0.82 requests
-Flywheel 1.0.4 in its published dependency metadata, which otherwise makes
-`runClient` fail the Flywheel version check before mod initialization.
+```powershell
+.\gradlew.bat :mods:create-efficient-gauge:build
+.\gradlew.bat :mods:minecraft-frame-profiler:build
+```
+
+Each mod jar is written to its own `build/libs` directory.

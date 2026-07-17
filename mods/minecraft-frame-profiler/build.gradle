@@ -1,0 +1,61 @@
+plugins {
+    id 'create-mods.neoforge-mod'
+}
+
+version = '0.1.0'
+
+def modId = 'minecraftframeprofiler'
+def modName = 'Minecraft Frame Profiler'
+def modAuthors = 'Minecraft Frame Profiler contributors'
+def modDescription = 'Bounded rolling JFR recordings for diagnosing slow Minecraft client frames.'
+def modLicense = 'AGPL-3.0-only'
+
+base {
+    archivesName = "${modId}-${minecraft_version}"
+}
+
+neoForge {
+    runs {
+        client {
+            client()
+            gameDirectory = rootProject.file('runs/frame-profiler')
+        }
+    }
+
+    mods {
+        "${modId}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+
+    unitTest {
+        enable()
+        testedMod = mods."${modId}"
+    }
+}
+
+dependencies {
+    testImplementation('org.junit.jupiter:junit-jupiter:5.11.4')
+    testRuntimeOnly('org.junit.platform:junit-platform-launcher')
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+processResources {
+    def props = [
+        mod_id: modId,
+        mod_name: modName,
+        mod_version: version,
+        mod_authors: modAuthors,
+        mod_description: modDescription,
+        mod_license: modLicense,
+        minecraft_version: minecraft_version,
+        neo_version: neo_version
+    ]
+    inputs.properties(props)
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(props)
+    }
+}
