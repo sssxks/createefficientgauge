@@ -1,0 +1,97 @@
+{
+  "credit": "Create: Handheld Cannon",
+  "ambientocclusion": false,
+  "gui_light": "front",
+  "textures": {
+    "brass": "create:block/brass_casing",
+    "copper": "create:block/copper_casing",
+    "iron": "create:block/industrial_iron_block",
+    "dark": "minecraft:block/black_concrete",
+    "projection": "minecraft:block/light_blue_concrete"
+  },
+  "elements": [
+    {
+      "from": [2, 5, 4], "to": [12, 12, 12],
+      "faces": {
+        "north": {"texture": "#brass"}, "south": {"texture": "#brass"},
+        "east": {"texture": "#brass"}, "west": {"texture": "#brass"},
+        "up": {"texture": "#brass"}, "down": {"texture": "#brass"}
+      }
+    },
+    {
+      "from": [11, 6, 5], "to": [16, 11, 11],
+      "faces": {
+        "north": {"texture": "#copper"}, "south": {"texture": "#copper"},
+        "east": {"texture": "#copper"}, "west": {"texture": "#copper"},
+        "up": {"texture": "#copper"}, "down": {"texture": "#copper"}
+      }
+    },
+    {
+      "from": [14, 4, 3], "to": [16, 13, 13],
+      "faces": {
+        "north": {"texture": "#copper"}, "south": {"texture": "#copper"},
+        "east": {"texture": "#dark"}, "west": {"texture": "#copper"},
+        "up": {"texture": "#copper"}, "down": {"texture": "#copper"}
+      }
+    },
+    {
+      "from": [3, -1, 6], "to": [8, 6, 10],
+      "rotation": {"angle": -22.5, "axis": "z", "origin": [6, 5, 8]},
+      "faces": {
+        "north": {"texture": "#dark"}, "south": {"texture": "#dark"},
+        "east": {"texture": "#iron"}, "west": {"texture": "#iron"},
+        "up": {"texture": "#dark"}, "down": {"texture": "#brass"}
+      }
+    },
+    {
+      "from": [3, 6, 2], "to": [10, 9, 4],
+      "faces": {
+        "north": {"texture": "#dark"}, "south": {"texture": "#dark"},
+        "east": {"texture": "#copper"}, "west": {"texture": "#copper"},
+        "up": {"texture": "#iron"}, "down": {"texture": "#iron"}
+      }
+    },
+    {
+      "from": [2, 13, 6], "to": [12, 15, 10],
+      "faces": {
+        "north": {"texture": "#projection", "emissivity": 10},
+        "south": {"texture": "#projection", "emissivity": 10},
+        "east": {"texture": "#iron"}, "west": {"texture": "#iron"},
+        "up": {"texture": "#projection", "emissivity": 10}, "down": {"texture": "#dark"}
+      }
+    },
+    {
+      "from": [1, 12, 5], "to": [3, 16, 11],
+      "faces": {
+        "north": {"texture": "#iron"}, "south": {"texture": "#iron"},
+        "east": {"texture": "#brass"}, "west": {"texture": "#iron"},
+        "up": {"texture": "#iron"}, "down": {"texture": "#iron"}
+      }
+    },
+    {
+      "from": [10, 12, 5], "to": [12, 16, 11],
+      "faces": {
+        "north": {"texture": "#brass"}, "south": {"texture": "#brass"},
+        "east": {"texture": "#iron"}, "west": {"texture": "#brass"},
+        "up": {"texture": "#brass"}, "down": {"texture": "#iron"}
+      }
+    },
+    {
+      "from": [0, 7, 5], "to": [2, 11, 11],
+      "faces": {
+        "north": {"texture": "#iron"}, "south": {"texture": "#iron"},
+        "east": {"texture": "#brass"}, "west": {"texture": "#dark"},
+        "up": {"texture": "#iron"}, "down": {"texture": "#iron"}
+      }
+    }
+  ],
+  "display": {
+    "thirdperson_righthand": {"rotation": [0, 90, -18], "translation": [0, 2.2, 1.2], "scale": [0.72, 0.72, 0.72]},
+    "thirdperson_lefthand": {"rotation": [0, -90, 18], "translation": [0, 2.2, 1.2], "scale": [0.72, 0.72, 0.72]},
+    "firstperson_righthand": {"rotation": [0, 96, -22], "translation": [1.6, 3.2, 1.8], "scale": [0.82, 0.82, 0.82]},
+    "firstperson_lefthand": {"rotation": [0, -96, 22], "translation": [1.6, 3.2, 1.8], "scale": [0.82, 0.82, 0.82]},
+    "gui": {"rotation": [24, 138, 0], "translation": [0, 0.5, 0], "scale": [0.82, 0.82, 0.82]},
+    "ground": {"rotation": [0, 0, 90], "translation": [0, 3, 0], "scale": [0.55, 0.55, 0.55]},
+    "fixed": {"rotation": [0, 90, 0], "scale": [0.72, 0.72, 0.72]}
+  }
+}

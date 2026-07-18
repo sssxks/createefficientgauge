@@ -14,5 +14,6 @@ plugins {
 rootProject.name = 'create-mod-suite'
 
 include('mods:create-efficient-gauge')
+include('mods:create-handheld-cannon')
 include('mods:minecraft-frame-profiler')
 include('tools:jfr-analyzer')
