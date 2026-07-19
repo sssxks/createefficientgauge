@@ -2,15 +2,17 @@ package io.github.createhandheldcannon.client;
 
 import java.util.List;
 
-import org.joml.Vector3f;
-import org.lwjgl.glfw.GLFW;
-
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.simibubi.create.AllDataComponents;
+import com.simibubi.create.AllKeys;
+import com.simibubi.create.content.logistics.BigItemStack;
+import com.simibubi.create.content.logistics.stockTicker.StockKeeperRequestScreen;
 import com.simibubi.create.content.logistics.stockTicker.StockTickerInteractionHandler;
 import com.simibubi.create.content.schematics.SchematicInstances;
 import com.simibubi.create.content.schematics.client.SchematicRenderer;
+import com.simibubi.create.content.schematics.client.SchematicTransformation;
+import com.simibubi.create.foundation.utility.RaycastHelper;
+import com.simibubi.create.foundation.utility.RaycastHelper.PredicateTraceResult;
 
 import io.github.createhandheldcannon.CreateHandheldCannon;
 import io.github.createhandheldcannon.content.CannonState;
@@ -19,24 +21,29 @@ import io.github.createhandheldcannon.net.CannonNetworking.DeployRequest;
 import io.github.createhandheldcannon.net.CannonNetworking.PlanRequest;
 import io.github.createhandheldcannon.net.CannonNetworking.PlanStatus;
 import io.github.createhandheldcannon.net.CannonNetworking.ResupplyRequest;
+import io.github.createhandheldcannon.net.CannonNetworking.StockRequestPrefill;
 import io.github.createhandheldcannon.service.CreateSchematicBridge;
+import net.createmod.catnip.animation.AnimationTickHolder;
+import net.createmod.catnip.math.VecHelper;
+import net.createmod.catnip.outliner.AABBOutline;
 import net.createmod.catnip.render.DefaultSuperRenderTypeBuffer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Direction.Axis;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult.Type;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -49,14 +56,21 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 @EventBusSubscriber(modid = CreateHandheldCannon.MOD_ID, value = Dist.CLIENT)
 public final class ClientCannonController {
-    private static BlockPos anchor;
+    private static final CannonToolSelection TOOL_SELECTION = new CannonToolSelection();
+
+    private static BlockPos selectedPos;
+    private static BlockPos targetAnchor;
+    private static boolean targetVisible;
     private static boolean locked;
-    private static Rotation rotation = Rotation.NONE;
-    private static Mirror mirror = Mirror.NONE;
+    private static Direction selectedFace;
+    private static boolean schematicSelected;
     private static PlanStatus status;
+    private static SchematicTransformation transformation;
+    private static AABB bounds;
+    private static AABBOutline outline;
     private static SchematicRenderer renderer;
-    private static int rendererHash;
     private static ItemStack renderedSchematic = ItemStack.EMPTY;
+    private static List<ItemStack> pendingStockRequest;
 
     private ClientCannonController() {
     }
@@ -64,6 +78,9 @@ public final class ClientCannonController {
     @SubscribeEvent
     public static void tick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
+        applyPendingStockRequest(minecraft);
+        TOOL_SELECTION.update();
+
         if (minecraft.player == null || minecraft.level == null) {
             reset();
             return;
@@ -74,15 +91,19 @@ public final class ClientCannonController {
             return;
         }
         ItemStack schematic = CannonState.selectedSchematic(cannon);
-        if (schematic.isEmpty() || !schematic.has(AllDataComponents.SCHEMATIC_FILE)) {
-            renderer = null;
-            renderedSchematic = ItemStack.EMPTY;
+        if (schematic.isEmpty() || !schematic.has(AllDataComponents.SCHEMATIC_FILE)
+            || schematic.get(AllDataComponents.SCHEMATIC_BOUNDS) == null) {
+            clearPreview();
             return;
         }
-        if (!locked) {
-            anchor = pointedAnchor(minecraft, schematic);
+
+        initializePreview(minecraft, schematic);
+        transformation.tick();
+        if (locked) {
+            updateSchematicFace(minecraft);
+        } else {
+            updatePointedTarget(minecraft);
         }
-        updateRenderer(minecraft, schematic);
     }
 
     @SubscribeEvent
@@ -107,97 +128,88 @@ public final class ClientCannonController {
         }
 
         ItemStack schematic = CannonState.selectedSchematic(cannon);
-        if (schematic.isEmpty() || anchor == null) {
+        if (schematic.isEmpty() || transformation == null || (!locked && (!targetVisible || targetAnchor == null))) {
             return;
         }
+
+        BlockPos anchor = transformation.getAnchor();
+        StructurePlaceSettings settings = transformation.toSettings();
         if (!locked) {
             locked = true;
             status = null;
-            PacketDistributor.sendToServer(new PlanRequest(InteractionHand.MAIN_HAND, anchor, rotation, mirror));
+            PacketDistributor.sendToServer(
+                new PlanRequest(InteractionHand.MAIN_HAND, anchor, settings.getRotation(), settings.getMirror()));
         } else if (status != null && status.valid()) {
             status = null;
-            PacketDistributor.sendToServer(new DeployRequest(InteractionHand.MAIN_HAND, anchor, rotation, mirror));
+            PacketDistributor.sendToServer(
+                new DeployRequest(InteractionHand.MAIN_HAND, anchor, settings.getRotation(), settings.getMirror()));
         } else {
-            PacketDistributor.sendToServer(new PlanRequest(InteractionHand.MAIN_HAND, anchor, rotation, mirror));
+            PacketDistributor.sendToServer(
+                new PlanRequest(InteractionHand.MAIN_HAND, anchor, settings.getRotation(), settings.getMirror()));
         }
         event.setCanceled(true);
     }
 
     @SubscribeEvent
     public static void onScroll(InputEvent.MouseScrollingEvent event) {
-        if (!locked || Minecraft.getInstance().player == null) {
+        if (!locked) {
             return;
         }
-        int direction = (int) Math.signum(event.getScrollDeltaY());
-        if (direction == 0) {
+        double delta = event.getScrollDeltaY();
+        if (delta == 0) {
             return;
         }
-        if (Minecraft.getInstance().player.isShiftKeyDown()) {
-            anchor = anchor.above(direction);
-        } else if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
-            mirror = mirror == Mirror.NONE ? Mirror.FRONT_BACK : Mirror.NONE;
-            renderer = null;
-        } else {
-            rotation = direction > 0 ? rotation.getRotated(Rotation.CLOCKWISE_90)
-                : rotation.getRotated(Rotation.COUNTERCLOCKWISE_90);
-            renderer = null;
+        if (TOOL_SELECTION.focused()) {
+            TOOL_SELECTION.cycle((int) Math.signum(delta));
+            event.setCanceled(true);
+            return;
         }
-        status = null;
-        PacketDistributor.sendToServer(new PlanRequest(InteractionHand.MAIN_HAND, anchor, rotation, mirror));
+        if (!AllKeys.ctrlDown() || transformation == null) {
+            return;
+        }
+        applySelectedTool(delta);
         event.setCanceled(true);
     }
 
     @SubscribeEvent
     public static void onKey(InputEvent.Key event) {
-        if (locked && event.getAction() == GLFW.GLFW_PRESS && event.getKey() == GLFW.GLFW_KEY_R) {
-            locked = false;
-            status = null;
+        if (!locked || !AllKeys.TOOL_MENU.doesModifierAndCodeMatch(event.getKey())) {
+            return;
+        }
+        if (event.getAction() == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
+            TOOL_SELECTION.setFocused(true);
+        } else if (event.getAction() == org.lwjgl.glfw.GLFW.GLFW_RELEASE) {
+            TOOL_SELECTION.setFocused(false);
         }
     }
 
     @SubscribeEvent
     public static void renderWorld(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES || renderer == null || anchor == null) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES || renderer == null
+            || transformation == null || bounds == null || outline == null || (!locked && !targetVisible)) {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.level == null) {
             return;
         }
-        ItemStack cannon = minecraft.player.getMainHandItem();
-        ItemStack schematic = CannonState.selectedSchematic(cannon);
-        var bounds = schematic.get(AllDataComponents.SCHEMATIC_BOUNDS);
-        if (bounds == null) {
-            return;
-        }
 
         PoseStack pose = event.getPoseStack();
-        Vec3 camera = event.getCamera().getPosition();
         pose.pushPose();
-        pose.translate(anchor.getX() - camera.x, anchor.getY() - camera.y, anchor.getZ() - camera.z);
+        transformation.applyTransformations(pose, event.getCamera().getPosition());
 
         DefaultSuperRenderTypeBuffer buffers = DefaultSuperRenderTypeBuffer.getInstance();
-        RenderSystem.enableBlend();
-        RenderSystem.setShaderColor(0.72f, 0.9f, 1.0f, 0.72f);
         renderer.render(pose, buffers);
-        buffers.draw();
-        RenderSystem.setShaderColor(1, 1, 1, 1);
 
-        int x = bounds.getX();
-        int z = bounds.getZ();
-        if (rotation == Rotation.CLOCKWISE_90 || rotation == Rotation.COUNTERCLOCKWISE_90) {
-            int swap = x;
-            x = z;
-            z = swap;
+        int color = outlineColor();
+        outline.getParams().colored(color).lineWidth(1 / 16f).clearTextures();
+        if (locked && schematicSelected && selectedFace != null
+            && (TOOL_SELECTION.selected() == CannonTool.MOVE || TOOL_SELECTION.selected() == CannonTool.FLIP)) {
+            outline.getParams().highlightFace(selectedFace);
         }
-        float[] color = outlineColor();
-        LevelRenderer.renderLineBox(
-            pose,
-            minecraft.renderBuffers().bufferSource().getBuffer(RenderType.lines()),
-            new AABB(0, 0, 0, x, bounds.getY(), z),
-            color[0], color[1], color[2], 1.0f
-        );
-        minecraft.renderBuffers().bufferSource().endBatch(RenderType.lines());
+        outline.render(pose, buffers, Vec3.ZERO, AnimationTickHolder.getPartialTicks());
+        outline.getParams().clearTextures();
+        buffers.draw();
         pose.popPose();
     }
 
@@ -210,40 +222,33 @@ public final class ClientCannonController {
         }
         GuiGraphics graphics = event.getGuiGraphics();
         int center = graphics.guiWidth() / 2;
-        Component line;
-        if (!locked) {
-            line = Component.translatable("hud.createhandheldcannon.place").withStyle(ChatFormatting.AQUA);
-        } else if (status == null) {
-            line = Component.translatable("hud.createhandheldcannon.checking").withStyle(ChatFormatting.YELLOW);
-        } else if (status.valid()) {
-            line = Component.translatable("hud.createhandheldcannon.ready", status.targetCount())
-                .withStyle(ChatFormatting.GREEN);
-        } else {
-            line = Component.translatable("hud.createhandheldcannon.status." + status.message())
-                .withStyle(ChatFormatting.RED);
-        }
-        graphics.drawCenteredString(minecraft.font, line, center, graphics.guiHeight() - 64, 0xFFFFFFFF);
+
         if (locked) {
-            Component tools = Component.translatable("hud.createhandheldcannon.toolbar");
-            graphics.fill(center - 118, graphics.guiHeight() - 48, center + 118, graphics.guiHeight() - 32, 0xA020252B);
-            graphics.drawCenteredString(minecraft.font, tools, center, graphics.guiHeight() - 44, 0xFFE0E6EA);
+            Component line;
+            if (status == null) {
+                line = Component.translatable("hud.createhandheldcannon.checking").withStyle(ChatFormatting.YELLOW);
+            } else if (status.valid()) {
+                line = Component.translatable("hud.createhandheldcannon.ready", status.targetCount())
+                    .withStyle(ChatFormatting.GREEN);
+            } else {
+                line = Component.translatable("hud.createhandheldcannon.status." + status.message())
+                    .withStyle(ChatFormatting.RED);
+            }
+            graphics.drawCenteredString(minecraft.font, line, center, graphics.guiHeight() - 64, 0xFFFFFFFF);
+            TOOL_SELECTION.render(graphics, AnimationTickHolder.getPartialTicks());
+
             if (status != null && !status.missing().isEmpty()) {
-                List<ItemStack> shown = status.missing().stream().limit(4).toList();
+                List<ItemStack> shown = status.missing().stream().limit(6).toList();
                 int itemStart = center - shown.size() * 10;
-                int itemY = graphics.guiHeight() - 98;
-                graphics.fill(itemStart - 3, itemY - 3, itemStart + shown.size() * 20 + 3, itemY + 19, 0xB0101417);
+                int itemY = graphics.guiHeight() - 111;
+                graphics.fill(itemStart - 4, itemY - 4, itemStart + shown.size() * 20 + 4, itemY + 20,
+                    0xC0101417);
                 for (int i = 0; i < shown.size(); i++) {
                     ItemStack stack = shown.get(i);
                     int itemX = itemStart + i * 20;
                     graphics.renderItem(stack, itemX, itemY);
                     graphics.renderItemDecorations(minecraft.font, stack, itemX, itemY);
                 }
-                String missing = status.missing().stream()
-                    .limit(4)
-                    .map(stack -> stack.getHoverName().getString() + " ×" + stack.getCount())
-                    .reduce((a, b) -> a + ", " + b)
-                    .orElse("");
-                graphics.drawCenteredString(minecraft.font, missing, center, graphics.guiHeight() - 76, 0xFFFF7777);
             }
         }
     }
@@ -251,23 +256,19 @@ public final class ClientCannonController {
     public static void acceptStatus(PlanStatus incoming) {
         status = incoming;
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player != null && (incoming.message().startsWith("order_")
-            || incoming.message().contains("stock_keeper")
-            || incoming.message().equals("not_stock_keeper")
-            || incoming.message().equals("nothing_to_order"))) {
+        if (minecraft.player != null && (incoming.message().contains("stock_keeper")
+            || incoming.message().equals("not_stock_keeper") || incoming.message().equals("nothing_to_order"))) {
             minecraft.player.displayClientMessage(
-                Component.translatable("hud.createhandheldcannon.status." + incoming.message()),
-                true
-            );
-        } else if (minecraft.player != null && incoming.message().contains("address")) {
-            minecraft.player.displayClientMessage(
-                Component.translatable("message.createhandheldcannon." + incoming.message()),
-                true
-            );
+                Component.translatable("hud.createhandheldcannon.status." + incoming.message()), true);
         }
         if (incoming.message().equals("deployed")) {
             locked = false;
+            status = null;
         }
+    }
+
+    public static void acceptStockRequest(StockRequestPrefill request) {
+        pendingStockRequest = request.stacks();
     }
 
     public static void acceptEffect(DeployEffect effect) {
@@ -283,11 +284,8 @@ public final class ClientCannonController {
             int particles = Mth.clamp((int) (delta.length() / 2), 3, 12);
             for (int step = 0; step <= particles; step++) {
                 Vec3 point = effect.origin().add(delta.scale(step / (double) particles));
-                minecraft.level.addParticle(
-                    net.minecraft.core.particles.ParticleTypes.END_ROD,
-                    point.x, point.y, point.z,
-                    delta.x * 0.01, delta.y * 0.01, delta.z * 0.01
-                );
+                minecraft.level.addParticle(net.minecraft.core.particles.ParticleTypes.END_ROD,
+                    point.x, point.y, point.z, delta.x * 0.01, delta.y * 0.01, delta.z * 0.01);
             }
         }
         if (minecraft.player != null) {
@@ -295,53 +293,130 @@ public final class ClientCannonController {
         }
     }
 
-    private static BlockPos pointedAnchor(Minecraft minecraft, ItemStack schematic) {
-        if (!(minecraft.hitResult instanceof BlockHitResult hit)) {
-            return minecraft.player.blockPosition();
-        }
-        Direction face = hit.getDirection();
-        BlockPos base = hit.getBlockPos().relative(face);
-        var size = schematic.get(AllDataComponents.SCHEMATIC_BOUNDS);
-        if (size == null) {
-            return base;
-        }
-        int x = size.getX();
-        int z = size.getZ();
-        if (rotation == Rotation.CLOCKWISE_90 || rotation == Rotation.COUNTERCLOCKWISE_90) {
-            int swap = x;
-            x = z;
-            z = swap;
-        }
-        return base.offset(-x / 2, face == Direction.DOWN ? -size.getY() : 0, -z / 2);
-    }
-
-    private static void updateRenderer(Minecraft minecraft, ItemStack schematic) {
-        ItemStack preview = CreateSchematicBridge.deployedCopy(schematic, BlockPos.ZERO, rotation, mirror);
-        int hash = SchematicInstances.getHash(preview);
-        if (renderer != null && hash == rendererHash && ItemStack.isSameItemSameComponents(schematic, renderedSchematic)) {
+    private static void initializePreview(Minecraft minecraft, ItemStack schematic) {
+        if (renderer != null && ItemStack.isSameItemSameComponents(schematic, renderedSchematic)) {
             return;
         }
+        var size = schematic.get(AllDataComponents.SCHEMATIC_BOUNDS);
+        bounds = new AABB(0, 0, 0, size.getX(), size.getY(), size.getZ());
+        outline = new AABBOutline(bounds);
+        transformation = new SchematicTransformation();
+        transformation.init(BlockPos.ZERO, new StructurePlaceSettings(), bounds);
+
+        ItemStack preview = CreateSchematicBridge.deployedCopy(
+            schematic, BlockPos.ZERO, Rotation.NONE, Mirror.NONE);
         var world = SchematicInstances.get(minecraft.level, preview);
         renderer = world == null ? null : new SchematicRenderer(world);
-        rendererHash = hash;
         renderedSchematic = schematic.copy();
+        selectedPos = null;
+        targetAnchor = null;
+        targetVisible = false;
+        locked = false;
+        status = null;
     }
 
-    private static float[] outlineColor() {
+    private static void updatePointedTarget(Minecraft minecraft) {
+        BlockHitResult trace = RaycastHelper.rayTraceRange(minecraft.level, minecraft.player, 75);
+        if (trace == null || trace.getType() != Type.BLOCK) {
+            selectedPos = null;
+            targetVisible = false;
+            return;
+        }
+
+        BlockPos hit = BlockPos.containing(trace.getLocation());
+        boolean replaceable = minecraft.level.getBlockState(hit).canBeReplaced();
+        if (trace.getDirection().getAxis().isVertical() && !replaceable) {
+            hit = hit.relative(trace.getDirection());
+        }
+        selectedPos = hit;
+
+        Vec3 center = bounds.getCenter();
+        BlockPos nextAnchor = selectedPos.offset(-((int) center.x), 0, -((int) center.z));
+        if (!targetVisible) {
+            transformation.startAt(nextAnchor);
+        }
+        transformation.moveTo(nextAnchor);
+        targetAnchor = nextAnchor;
+        targetVisible = true;
+    }
+
+    private static void updateSchematicFace(Minecraft minecraft) {
+        Vec3 traceOrigin = minecraft.player.getEyePosition();
+        Vec3 start = transformation.toLocalSpace(traceOrigin);
+        Vec3 end = transformation.toLocalSpace(RaycastHelper.getTraceTarget(minecraft.player, 70, traceOrigin));
+        PredicateTraceResult result = RaycastHelper.rayTraceUntil(
+            start, end, pos -> bounds.contains(VecHelper.getCenterOf(pos)));
+        schematicSelected = !result.missed();
+        selectedFace = schematicSelected ? result.getFacing() : null;
+    }
+
+    private static void applySelectedTool(double delta) {
+        CannonTool tool = TOOL_SELECTION.selected();
+        switch (tool) {
+            case MOVE -> {
+                if (!schematicSelected || selectedFace == null || !selectedFace.getAxis().isHorizontal()) {
+                    return;
+                }
+                Vec3 movement = Vec3.atLowerCornerOf(selectedFace.getNormal()).scale(-Math.signum(delta));
+                movement = movement.multiply(
+                    transformation.getMirrorModifier(Axis.X), 1, transformation.getMirrorModifier(Axis.Z));
+                movement = VecHelper.rotate(movement, transformation.getRotationTarget(), Axis.Y);
+                transformation.move((int) movement.x, 0, (int) movement.z);
+            }
+            case MOVE_Y -> transformation.move(0, Mth.sign(delta), 0);
+            case ROTATE -> transformation.rotate90(delta > 0);
+            case FLIP -> {
+                if (!schematicSelected || selectedFace == null || !selectedFace.getAxis().isHorizontal()) {
+                    return;
+                }
+                transformation.flip(selectedFace.getAxis());
+            }
+        }
+        status = null;
+        StructurePlaceSettings settings = transformation.toSettings();
+        PacketDistributor.sendToServer(new PlanRequest(InteractionHand.MAIN_HAND, transformation.getAnchor(),
+            settings.getRotation(), settings.getMirror()));
+    }
+
+    private static void applyPendingStockRequest(Minecraft minecraft) {
+        if (pendingStockRequest == null || !(minecraft.screen instanceof StockKeeperRequestScreen screen)) {
+            return;
+        }
+        screen.itemsToOrder.clear();
+        for (ItemStack stack : pendingStockRequest) {
+            if (!stack.isEmpty()) {
+                screen.itemsToOrder.add(new BigItemStack(stack.copyWithCount(1), stack.getCount()));
+            }
+        }
+        pendingStockRequest = null;
+    }
+
+    private static int outlineColor() {
         if (!locked) {
-            return new float[] {0.25f, 0.65f, 1.0f};
+            return 0x6886c5;
         }
         if (status == null) {
-            return new float[] {1.0f, 0.75f, 0.2f};
+            return 0xe2b34f;
         }
-        return status.valid() ? new float[] {0.2f, 1.0f, 0.35f} : new float[] {1.0f, 0.2f, 0.2f};
+        return status.valid() ? 0x58d68d : 0xe85b5b;
+    }
+
+    private static void clearPreview() {
+        selectedPos = null;
+        targetAnchor = null;
+        targetVisible = false;
+        locked = false;
+        status = null;
+        transformation = null;
+        bounds = null;
+        outline = null;
+        renderer = null;
+        renderedSchematic = ItemStack.EMPTY;
+        TOOL_SELECTION.setFocused(false);
     }
 
     private static void reset() {
-        anchor = null;
-        locked = false;
-        status = null;
-        renderer = null;
-        renderedSchematic = ItemStack.EMPTY;
+        clearPreview();
+        pendingStockRequest = null;
     }
 }

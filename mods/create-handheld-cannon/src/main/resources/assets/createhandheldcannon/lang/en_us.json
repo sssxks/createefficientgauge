@@ -4,7 +4,10 @@
   "tooltip.createhandheldcannon.selected": "Selected: %s  ·  Todo: %s",
   "tooltip.createhandheldcannon.open": "Sneak + Right-click to configure",
   "gui.createhandheldcannon.settings": "Printer Settings",
-  "gui.createhandheldcannon.address": "Package address",
+  "gui.createhandheldcannon.select": "Select schematic slot %s",
+  "gui.createhandheldcannon.todo": "Todo",
+  "gui.createhandheldcannon.empty": "No schematic selected",
+  "gui.createhandheldcannon.schematic_slot": "Schematic storage",
   "gui.createhandheldcannon.replace_mode": "Replace mode: %s",
   "gui.createhandheldcannon.replace_block_entities": "Replace block entities: %s",
   "gui.createhandheldcannon.mode.dont_replace": "Don't replace",
@@ -14,7 +17,6 @@
   "hud.createhandheldcannon.place": "Right-click to lock schematic",
   "hud.createhandheldcannon.checking": "Checking materials…",
   "hud.createhandheldcannon.ready": "Ready · %s targets · Right-click to fire",
-  "hud.createhandheldcannon.toolbar": "Wheel: rotate   Shift+Wheel: height   Ctrl+Wheel: mirror   R: cancel",
   "hud.createhandheldcannon.status.no_schematic": "No valid schematic selected",
   "hud.createhandheldcannon.status.out_of_range": "Schematic is out of range",
   "hud.createhandheldcannon.status.invalid_schematic": "Schematic could not be loaded",
@@ -28,11 +30,6 @@
   "hud.createhandheldcannon.status.stock_keeper_out_of_range": "Stock Keeper is out of range",
   "hud.createhandheldcannon.status.not_stock_keeper": "This is not a Stock Keeper",
   "hud.createhandheldcannon.status.stock_keeper_protected": "This logistics network is protected",
-  "hud.createhandheldcannon.status.address_required": "Set a package address in Printer Settings",
   "hud.createhandheldcannon.status.nothing_to_order": "All todo materials are already available",
-  "hud.createhandheldcannon.status.order_placed": "Resupply order placed",
-  "hud.createhandheldcannon.status.order_failed": "The logistics network could not place the order",
-  "message.createhandheldcannon.order_placed": "Resupply order placed",
-  "message.createhandheldcannon.order_failed": "The resupply order could not be placed",
-  "message.createhandheldcannon.address_required": "Set a package address in Printer Settings"
+  "hud.createhandheldcannon.status.request_opened": "Resupply request opened"
 }

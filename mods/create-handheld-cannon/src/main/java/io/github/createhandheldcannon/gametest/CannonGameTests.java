@@ -54,7 +54,6 @@ public final class CannonGameTests {
         CannonState.setRemainingShots(cannon, 23);
         CannonState.cycleReplaceMode(cannon);
         CannonState.toggleReplaceBlockEntities(cannon);
-        CannonState.setAddress(cannon, "Factory A / Receiving");
 
         ItemStack copy = cannon.copy();
         helper.assertTrue(CannonState.contents(copy).get(0).getCount() == 12, "gunpowder slot was not persisted");
@@ -64,7 +63,6 @@ public final class CannonGameTests {
         helper.assertTrue(CannonState.replaceMode(copy) == CannonState.ReplaceMode.REPLACE_SOLID,
             "replace mode was not persisted");
         helper.assertTrue(CannonState.replaceBlockEntities(copy), "block entity setting was not persisted");
-        helper.assertTrue(CannonState.address(copy).equals("Factory A / Receiving"), "package address was not persisted");
         helper.succeed();
     }
 

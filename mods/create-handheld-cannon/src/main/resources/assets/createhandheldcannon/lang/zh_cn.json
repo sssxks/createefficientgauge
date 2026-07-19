@@ -4,7 +4,10 @@
   "tooltip.createhandheldcannon.selected": "当前蓝图：%s  ·  待办：%s",
   "tooltip.createhandheldcannon.open": "潜行 + 右键打开配置",
   "gui.createhandheldcannon.settings": "打印设置",
-  "gui.createhandheldcannon.address": "包裹地址",
+  "gui.createhandheldcannon.select": "选择第 %s 个蓝图槽位",
+  "gui.createhandheldcannon.todo": "待办数量",
+  "gui.createhandheldcannon.empty": "未选择蓝图",
+  "gui.createhandheldcannon.schematic_slot": "蓝图存储槽",
   "gui.createhandheldcannon.replace_mode": "替换模式：%s",
   "gui.createhandheldcannon.replace_block_entities": "替换方块实体：%s",
   "gui.createhandheldcannon.mode.dont_replace": "不替换实心方块",
@@ -14,7 +17,6 @@
   "hud.createhandheldcannon.place": "右键固定蓝图",
   "hud.createhandheldcannon.checking": "正在核对材料……",
   "hud.createhandheldcannon.ready": "就绪 · %s 个目标 · 再次右键发射",
-  "hud.createhandheldcannon.toolbar": "滚轮：旋转   Shift+滚轮：升降   Ctrl+滚轮：镜像   R：取消",
   "hud.createhandheldcannon.status.no_schematic": "没有选中有效蓝图",
   "hud.createhandheldcannon.status.out_of_range": "蓝图超出射程",
   "hud.createhandheldcannon.status.invalid_schematic": "无法读取蓝图",
@@ -28,11 +30,6 @@
   "hud.createhandheldcannon.status.stock_keeper_out_of_range": "库存管理员距离过远",
   "hud.createhandheldcannon.status.not_stock_keeper": "目标不是库存管理员",
   "hud.createhandheldcannon.status.stock_keeper_protected": "该物流网络受保护",
-  "hud.createhandheldcannon.status.address_required": "请先在打印设置中填写包裹地址",
   "hud.createhandheldcannon.status.nothing_to_order": "待办所需材料已经齐全",
-  "hud.createhandheldcannon.status.order_placed": "快速补货订单已提交",
-  "hud.createhandheldcannon.status.order_failed": "物流网络未能提交订单",
-  "message.createhandheldcannon.order_placed": "快速补货订单已提交",
-  "message.createhandheldcannon.order_failed": "快速补货订单提交失败",
-  "message.createhandheldcannon.address_required": "请先在打印设置中填写包裹地址"
+  "hud.createhandheldcannon.status.request_opened": "已打开快速补货请求"
 }

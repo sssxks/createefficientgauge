@@ -27,7 +27,6 @@ public final class CannonState {
     private static final String SHOTS = "Shots";
     private static final String REPLACE_MODE = "ReplaceMode";
     private static final String REPLACE_BLOCK_ENTITIES = "ReplaceBlockEntities";
-    private static final String ADDRESS = "Address";
 
     private CannonState() {
     }
@@ -97,25 +96,17 @@ public final class CannonState {
         update(cannon, tag -> tag.putInt(REPLACE_MODE, (replaceMode(cannon).ordinal() + 1) % values.length));
     }
 
+    public static void setReplaceMode(ItemStack cannon, int ordinal) {
+        update(cannon, tag -> tag.putInt(REPLACE_MODE,
+            Math.clamp(ordinal, 0, ReplaceMode.values().length - 1)));
+    }
+
     public static boolean replaceBlockEntities(ItemStack cannon) {
         return root(cannon).getBoolean(REPLACE_BLOCK_ENTITIES);
     }
 
     public static void toggleReplaceBlockEntities(ItemStack cannon) {
         update(cannon, tag -> tag.putBoolean(REPLACE_BLOCK_ENTITIES, !replaceBlockEntities(cannon)));
-    }
-
-    public static String address(ItemStack cannon) {
-        return root(cannon).getString(ADDRESS);
-    }
-
-    public static void setAddress(ItemStack cannon, String address) {
-        String safe = address == null ? "" : address.strip();
-        if (safe.length() > 64) {
-            safe = safe.substring(0, 64);
-        }
-        String finalSafe = safe;
-        update(cannon, tag -> tag.putString(ADDRESS, finalSafe));
     }
 
     private static int[] normalTodo(int[] source) {

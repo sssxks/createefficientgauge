@@ -1,140 +1,200 @@
 package io.github.createhandheldcannon.client;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import com.simibubi.create.foundation.gui.AllGuiTextures;
+import com.simibubi.create.foundation.gui.AllIcons;
+import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
+import com.simibubi.create.foundation.gui.widget.IconButton;
+import com.simibubi.create.foundation.gui.widget.Label;
+import com.simibubi.create.foundation.gui.widget.ScrollInput;
+import com.simibubi.create.foundation.utility.CreateLang;
+
 import io.github.createhandheldcannon.content.CannonMenu;
 import io.github.createhandheldcannon.content.CannonState;
-import io.github.createhandheldcannon.net.CannonNetworking.UpdateAddress;
-import net.minecraft.ChatFormatting;
+import net.createmod.catnip.gui.element.GuiGameElement;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.network.PacketDistributor;
 
-public final class CannonScreen extends AbstractContainerScreen<CannonMenu> {
+public final class CannonScreen extends AbstractSimiContainerScreen<CannonMenu> {
+    private static final AllGuiTextures BG_TOP = AllGuiTextures.SCHEMATICANNON_TOP;
+    private static final AllGuiTextures BG_BOTTOM = AllGuiTextures.SCHEMATICANNON_BOTTOM;
+
+    private final List<IconButton> schematicButtons = new ArrayList<>();
+    private final List<IconButton> settingButtons = new ArrayList<>();
+    private IconButton settingsButton;
+    private IconButton confirmButton;
+    private ScrollInput todoInput;
+    private Label todoValue;
     private boolean settingsOpen;
-    private Button settingsButton;
-    private Button replaceModeButton;
-    private Button blockEntitiesButton;
-    private EditBox addressBox;
+    private int observedSelection = -1;
 
     public CannonScreen(CannonMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        imageWidth = 196;
-        imageHeight = 195;
-        inventoryLabelY = 101;
     }
 
     @Override
     protected void init() {
+        setWindowSize(BG_TOP.getWidth(), BG_TOP.getHeight() + BG_BOTTOM.getHeight() + 2
+            + AllGuiTextures.PLAYER_INVENTORY.getHeight());
+        setWindowOffset(-11, 0);
         super.init();
-        settingsButton = addRenderableWidget(Button.builder(
-            Component.translatable("gui.createhandheldcannon.settings"),
-            button -> toggleSettings()
-        ).bounds(leftPos + 17, topPos + 61, 162, 20).build());
 
-        replaceModeButton = addRenderableWidget(Button.builder(
-            modeLabel(),
-            button -> {
-                click(CannonMenu.BUTTON_REPLACE_MODE);
-                button.setMessage(modeLabelAfterCycle());
-            }
-        ).bounds(leftPos + 17, topPos + 61, 162, 18).build());
+        int x = leftPos;
+        int y = topPos;
+        schematicButtons.clear();
+        settingButtons.clear();
 
-        blockEntitiesButton = addRenderableWidget(Button.builder(
-            blockEntityLabel(),
-            button -> {
-                click(CannonMenu.BUTTON_BLOCK_ENTITIES);
-                button.setMessage(blockEntityLabelAfterToggle());
-            }
-        ).bounds(leftPos + 17, topPos + 81, 162, 18).build());
+        for (int i = 0; i < CannonState.SCHEMATIC_COUNT; i++) {
+            int index = i;
+            IconButton button = new IconButton(x + 46 + i * 22, y + 43, AllIcons.I_CONFIRM);
+            button.withCallback(() -> click(CannonMenu.BUTTON_SELECT_BASE + index));
+            button.setToolTip(Component.translatable("gui.createhandheldcannon.select", i + 1));
+            schematicButtons.add(button);
+            addRenderableWidget(button);
+        }
 
-        addressBox = new EditBox(font, leftPos + 75, topPos + 101, 104, 16,
-            Component.translatable("gui.createhandheldcannon.address"));
-        addressBox.setMaxLength(64);
-        addressBox.setValue(CannonState.address(cannon()));
-        addressBox.setResponder(value -> PacketDistributor.sendToServer(new UpdateAddress(value)));
-        addRenderableWidget(addressBox);
+        todoValue = new Label(x + 111, y + 73, CommonComponents.EMPTY).colored(0xDDEEFF);
+        todoInput = new ScrollInput(x + 102, y + 67, 50, 18)
+            .withRange(0, CannonState.MAX_TODO + 1)
+            .withShiftStep(10)
+            .titled(Component.translatable("gui.createhandheldcannon.todo"))
+            .writingTo(todoValue)
+            .calling(value -> click(CannonMenu.BUTTON_TODO_SET_BASE + value));
+        addRenderableWidgets(todoInput, todoValue);
+
+        settingsButton = new IconButton(x + 8, y + 111, AllIcons.I_PLACEMENT_SETTINGS);
+        settingsButton.withCallback(this::toggleSettings);
+        settingsButton.setToolTip(CreateLang.translateDirect("gui.schematicannon.showOptions"));
+        confirmButton = new IconButton(x + 180, y + 111, AllIcons.I_CONFIRM);
+        confirmButton.withCallback(() -> minecraft.player.closeContainer());
+        addRenderableWidgets(settingsButton, confirmButton);
+
+        addSettingButton(x + 33, y + 111, AllIcons.I_DONT_REPLACE, 0,
+            "gui.schematicannon.option.dontReplaceSolid");
+        addSettingButton(x + 51, y + 111, AllIcons.I_REPLACE_SOLID, 1,
+            "gui.schematicannon.option.replaceWithSolid");
+        addSettingButton(x + 69, y + 111, AllIcons.I_REPLACE_ANY, 2,
+            "gui.schematicannon.option.replaceWithAny");
+        addSettingButton(x + 87, y + 111, AllIcons.I_REPLACE_EMPTY, 3,
+            "gui.schematicannon.option.replaceWithEmpty");
+
+        IconButton blockEntities = new IconButton(x + 135, y + 111, AllIcons.I_SKIP_BLOCK_ENTITIES);
+        blockEntities.withCallback(() -> click(CannonMenu.BUTTON_BLOCK_ENTITIES));
+        blockEntities.setToolTip(CreateLang.translateDirect("gui.schematicannon.option.skipBlockEntities"));
+        settingButtons.add(blockEntities);
+        addRenderableWidget(blockEntities);
+
         setSettingsVisible(false);
+        refreshWidgets();
+    }
+
+    private void addSettingButton(int x, int y, AllIcons icon, int mode, String tooltip) {
+        IconButton button = new IconButton(x, y, icon);
+        button.withCallback(() -> {
+            if (CannonState.replaceMode(cannon()).ordinal() != mode) {
+                click(CannonMenu.BUTTON_REPLACE_MODE_BASE + mode);
+            }
+        });
+        button.setToolTip(CreateLang.translateDirect(tooltip));
+        settingButtons.add(button);
+        addRenderableWidget(button);
     }
 
     @Override
-    public void removed() {
-        super.removed();
+    protected void containerTick() {
+        super.containerTick();
+        refreshWidgets();
+    }
+
+    private void refreshWidgets() {
+        ItemStack cannon = cannon();
+        int selected = CannonState.selected(cannon);
+        for (int i = 0; i < schematicButtons.size(); i++) {
+            schematicButtons.get(i).green = i == selected;
+        }
+        if (observedSelection != selected || todoInput.getState() != CannonState.todo(cannon, selected)) {
+            observedSelection = selected;
+            todoInput.setState(CannonState.todo(cannon, selected));
+        }
+        for (int i = 0; i < 4 && i < settingButtons.size(); i++) {
+            settingButtons.get(i).green = CannonState.replaceMode(cannon).ordinal() == i;
+        }
+        if (settingButtons.size() > 4) {
+            settingButtons.get(4).green = !CannonState.replaceBlockEntities(cannon);
+        }
     }
 
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
-        graphics.fill(leftPos, topPos, leftPos + imageWidth, topPos + imageHeight, 0xF012171B);
-        graphics.fill(leftPos + 4, topPos + 4, leftPos + imageWidth - 4, topPos + 55, 0xFF263037);
-        graphics.renderOutline(leftPos, topPos, imageWidth, imageHeight, 0xFFB48A4A);
+        int x = leftPos;
+        int y = topPos;
+        int inventoryX = getLeftOfCentered(AllGuiTextures.PLAYER_INVENTORY.getWidth());
+        int inventoryY = y + BG_TOP.getHeight() + BG_BOTTOM.getHeight() + 2;
+        renderPlayerInventory(graphics, inventoryX, inventoryY);
 
-        for (int i = 0; i < CannonState.SLOT_COUNT; i++) {
-            int x = i == 0 ? leftPos + 16 : leftPos + 46 + (i - 1) * 22;
-            graphics.fill(x, topPos + 24, x + 18, topPos + 42, 0xFF0B0E10);
-            graphics.renderOutline(x, topPos + 24, 18, 18, 0xFF65727A);
-        }
+        BG_TOP.render(graphics, x, y);
+        BG_BOTTOM.render(graphics, x, y + BG_TOP.getHeight());
+        AllGuiTextures.SCHEMATIC_TITLE.render(graphics, x, y - 2);
+        graphics.drawString(font, title, x + (BG_TOP.getWidth() - 8 - font.width(title)) / 2, y + 2,
+            0x505050, false);
 
         int selected = CannonState.selected(cannon());
-        graphics.renderOutline(leftPos + 45 + selected * 22, topPos + 23, 20, 20, 0xFF55E27A);
+        if (!CannonState.selectedSchematic(cannon()).isEmpty()) {
+            AllGuiTextures.SCHEMATICANNON_HIGHLIGHT.render(graphics, x + 41 + selected * 22, y + 14);
+        }
 
         int perPowder = Math.max(1,
-            com.simibubi.create.infrastructure.config.AllConfigs.server().schematics.schematicannonShotsPerGunpowder.get());
-        int remaining = CannonState.remainingShots(cannon());
-        int fill = Math.min(18, Math.round(18 * (remaining / (float) perPowder)));
-        graphics.fill(leftPos + 16, topPos + 45, leftPos + 34, topPos + 49, 0xFF431D19);
-        graphics.fill(leftPos + 16, topPos + 45, leftPos + 16 + fill, topPos + 49, 0xFFE2B34F);
+            com.simibubi.create.infrastructure.config.AllConfigs.server().schematics
+                .schematicannonShotsPerGunpowder.get());
+        float fuel = Mth.clamp(CannonState.remainingShots(cannon()) / (float) perPowder, 0, 1);
+        AllGuiTextures fuelTexture = AllGuiTextures.SCHEMATICANNON_FUEL;
+        graphics.blit(fuelTexture.location, x + 36, y + 66, fuelTexture.getStartX(), fuelTexture.getStartY(),
+            (int) (fuelTexture.getWidth() * fuel), fuelTexture.getHeight());
 
-        if (settingsOpen) {
-            graphics.fill(leftPos + 10, topPos + 56, leftPos + 186, topPos + 121, 0xF01C2328);
-            graphics.drawString(font, Component.translatable("gui.createhandheldcannon.address"),
-                leftPos + 17, topPos + 105, 0xFFCFD6DA, false);
-        }
+        graphics.drawString(font, Component.translatable("gui.createhandheldcannon.todo"), x + 72, y + 72,
+            0xDDEEFF, false);
+        ItemStack selectedSchematic = CannonState.selectedSchematic(cannon());
+        Component selectedName = selectedSchematic.isEmpty()
+            ? Component.translatable("gui.createhandheldcannon.empty") : selectedSchematic.getHoverName();
+        String clippedName = font.plainSubstrByWidth(selectedName.getString(), 124);
+        graphics.drawCenteredString(font, clippedName, x + 106, y + 92, 0xDDEEFF);
+
+        GuiGameElement.of(cannon()).<GuiGameElement.GuiRenderBuilder>at(
+            x + BG_TOP.getWidth(), y + BG_TOP.getHeight() + BG_BOTTOM.getHeight() - 48, -200)
+            .scale(5).render(graphics);
     }
 
     @Override
-    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.drawString(font, title, titleLabelX, titleLabelY, 0xFFE8D8B2, false);
-        if (!settingsOpen) {
-            graphics.drawString(font, playerInventoryTitle, inventoryLabelX, inventoryLabelY, 0xFFC4CDD2, false);
+    protected void renderForeground(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        int fuelX = leftPos + 36;
+        int fuelY = topPos + 66;
+        if (mouseX >= fuelX && mouseY >= fuelY
+            && mouseX <= fuelX + AllGuiTextures.SCHEMATICANNON_FUEL.getWidth()
+            && mouseY <= fuelY + AllGuiTextures.SCHEMATICANNON_FUEL.getHeight()) {
+            int perPowder = Math.max(1,
+                com.simibubi.create.infrastructure.config.AllConfigs.server().schematics
+                    .schematicannonShotsPerGunpowder.get());
+            int stored = CannonState.remainingShots(cannon());
+            int powder = CannonState.contents(cannon()).get(CannonState.FUEL_SLOT).getCount();
+            graphics.renderComponentTooltip(font, List.of(
+                Component.translatable("gui.schematicannon.shotsRemaining", stored),
+                Component.translatable("gui.schematicannon.shotsRemainingWithBackup", stored + powder * perPowder)
+            ), mouseX, mouseY);
         }
-        for (int i = 0; i < CannonState.SCHEMATIC_COUNT; i++) {
-            int todo = CannonState.todo(cannon(), i);
-            String controls = "− " + todo + " +";
-            int x = 47 + i * 22 + 9 - font.width(controls) / 2;
-            graphics.drawString(font, controls, x, 47, i == CannonState.selected(cannon()) ? 0xFF75F091 : 0xFFB9C1C5, false);
+        if (hoveredSlot != null && !hoveredSlot.hasItem()) {
+            Component tooltip = hoveredSlot.index == CannonState.FUEL_SLOT
+                ? Component.translatable("gui.schematicannon.slot.gunpowder")
+                : Component.translatable("gui.createhandheldcannon.schematic_slot");
+            graphics.renderComponentTooltip(font, List.of(tooltip), mouseX, mouseY);
         }
-    }
-
-    @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics, mouseX, mouseY, partialTick);
-        super.render(graphics, mouseX, mouseY, partialTick);
-        renderTooltip(graphics, mouseX, mouseY);
-    }
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!settingsOpen && mouseY >= topPos + 45 && mouseY < topPos + 58) {
-            for (int i = 0; i < CannonState.SCHEMATIC_COUNT; i++) {
-                int start = leftPos + 46 + i * 22;
-                if (mouseX >= start && mouseX < start + 7) {
-                    click(CannonMenu.BUTTON_TODO_MINUS_BASE + i);
-                    return true;
-                }
-                if (mouseX >= start + 14 && mouseX < start + 22) {
-                    click(CannonMenu.BUTTON_TODO_PLUS_BASE + i);
-                    return true;
-                }
-                if (mouseX >= start + 7 && mouseX < start + 14) {
-                    click(CannonMenu.BUTTON_SELECT_BASE + i);
-                    return true;
-                }
-            }
-        }
-        return super.mouseClicked(mouseX, mouseY, button);
+        super.renderForeground(graphics, mouseX, mouseY, partialTicks);
     }
 
     private void toggleSettings() {
@@ -143,11 +203,11 @@ public final class CannonScreen extends AbstractContainerScreen<CannonMenu> {
     }
 
     private void setSettingsVisible(boolean visible) {
-        settingsButton.visible = !visible;
-        replaceModeButton.visible = visible;
-        blockEntitiesButton.visible = visible;
-        addressBox.visible = visible;
-        addressBox.setEditable(visible);
+        settingsButton.green = visible;
+        for (AbstractWidget widget : settingButtons) {
+            widget.visible = visible;
+            widget.active = visible;
+        }
     }
 
     private void click(int id) {
@@ -158,26 +218,5 @@ public final class CannonScreen extends AbstractContainerScreen<CannonMenu> {
 
     private ItemStack cannon() {
         return menu.cannonStack(minecraft.player);
-    }
-
-    private Component modeLabel() {
-        return Component.translatable("gui.createhandheldcannon.replace_mode",
-            Component.translatable("gui.createhandheldcannon.mode." + CannonState.replaceMode(cannon()).name().toLowerCase()));
-    }
-
-    private Component modeLabelAfterCycle() {
-        int next = (CannonState.replaceMode(cannon()).ordinal() + 1) % CannonState.ReplaceMode.values().length;
-        return Component.translatable("gui.createhandheldcannon.replace_mode",
-            Component.translatable("gui.createhandheldcannon.mode." + CannonState.ReplaceMode.values()[next].name().toLowerCase()));
-    }
-
-    private Component blockEntityLabel() {
-        return Component.translatable("gui.createhandheldcannon.replace_block_entities",
-            Component.translatable(CannonState.replaceBlockEntities(cannon()) ? "options.on" : "options.off"));
-    }
-
-    private Component blockEntityLabelAfterToggle() {
-        return Component.translatable("gui.createhandheldcannon.replace_block_entities",
-            Component.translatable(!CannonState.replaceBlockEntities(cannon()) ? "options.on" : "options.off"));
     }
 }

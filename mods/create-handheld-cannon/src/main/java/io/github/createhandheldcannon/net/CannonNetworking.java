@@ -5,8 +5,6 @@ import java.util.List;
 
 import io.github.createhandheldcannon.CreateHandheldCannon;
 import io.github.createhandheldcannon.client.ClientCannonController;
-import io.github.createhandheldcannon.content.CannonMenu;
-import io.github.createhandheldcannon.content.CannonState;
 import io.github.createhandheldcannon.service.CannonPlan;
 import io.github.createhandheldcannon.service.CreateSchematicBridge;
 import io.github.createhandheldcannon.service.StockKeeperOrders;
@@ -33,10 +31,11 @@ public final class CannonNetworking {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(PlanRequest.TYPE, PlanRequest.CODEC, CannonNetworking::handlePlan);
         registrar.playToServer(DeployRequest.TYPE, DeployRequest.CODEC, CannonNetworking::handleDeploy);
-        registrar.playToServer(UpdateAddress.TYPE, UpdateAddress.CODEC, CannonNetworking::handleAddress);
         registrar.playToServer(ResupplyRequest.TYPE, ResupplyRequest.CODEC, CannonNetworking::handleResupply);
         registrar.playToClient(PlanStatus.TYPE, PlanStatus.CODEC, CannonNetworking::handleStatus);
         registrar.playToClient(DeployEffect.TYPE, DeployEffect.CODEC, CannonNetworking::handleEffect);
+        registrar.playToClient(StockRequestPrefill.TYPE, StockRequestPrefill.CODEC,
+            CannonNetworking::handleStockRequestPrefill);
     }
 
     private static void handlePlan(PlanRequest payload, IPayloadContext context) {
@@ -70,16 +69,6 @@ public final class CannonNetworking {
         }
     }
 
-    private static void handleAddress(UpdateAddress payload, IPayloadContext context) {
-        if (!(context.player() instanceof ServerPlayer player) || !(player.containerMenu instanceof CannonMenu menu)) {
-            return;
-        }
-        ItemStack cannon = menu.cannonStack(player);
-        if (cannon.is(CreateHandheldCannon.HANDHELD_CANNON.get())) {
-            CannonState.setAddress(cannon, payload.address());
-        }
-    }
-
     private static void handleResupply(ResupplyRequest payload, IPayloadContext context) {
         if (!(context.player() instanceof ServerPlayer player)) {
             return;
@@ -88,8 +77,12 @@ public final class CannonNetworking {
         if (!cannon.is(CreateHandheldCannon.HANDHELD_CANNON.get())) {
             return;
         }
-        String message = StockKeeperOrders.placeOrder(player, cannon, payload.entityId());
-        context.reply(new PlanStatus(false, message, 0, List.of()));
+        StockKeeperOrders.RequestResult result = StockKeeperOrders.openRequest(player, cannon, payload.entityId());
+        if (!result.opened()) {
+            context.reply(new PlanStatus(false, result.message(), 0, List.of()));
+            return;
+        }
+        context.reply(new StockRequestPrefill(result.stacks()));
     }
 
     private static void handleStatus(PlanStatus payload, IPayloadContext context) {
@@ -101,6 +94,12 @@ public final class CannonNetworking {
     private static void handleEffect(DeployEffect payload, IPayloadContext context) {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             ClientCannonController.acceptEffect(payload);
+        }
+    }
+
+    private static void handleStockRequestPrefill(StockRequestPrefill payload, IPayloadContext context) {
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            ClientCannonController.acceptStockRequest(payload);
         }
     }
 
@@ -194,19 +193,6 @@ public final class CannonNetworking {
         }
     }
 
-    public record UpdateAddress(String address) implements CustomPacketPayload {
-        public static final Type<UpdateAddress> TYPE = new Type<>(CreateHandheldCannon.id("address"));
-        public static final StreamCodec<RegistryFriendlyByteBuf, UpdateAddress> CODEC = StreamCodec.of(
-            (buffer, value) -> buffer.writeUtf(value.address, 64),
-            buffer -> new UpdateAddress(buffer.readUtf(64))
-        );
-
-        @Override
-        public Type<? extends CustomPacketPayload> type() {
-            return TYPE;
-        }
-    }
-
     public record ResupplyRequest(int entityId) implements CustomPacketPayload {
         public static final Type<ResupplyRequest> TYPE = new Type<>(CreateHandheldCannon.id("resupply"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ResupplyRequest> CODEC = StreamCodec.of(
@@ -240,6 +226,30 @@ public final class CannonNetworking {
                 return new DeployEffect(origin, List.copyOf(targets));
             }
         );
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record StockRequestPrefill(List<ItemStack> stacks) implements CustomPacketPayload {
+        public static final Type<StockRequestPrefill> TYPE =
+            new Type<>(CreateHandheldCannon.id("stock_request_prefill"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, StockRequestPrefill> CODEC = StreamCodec.of(
+            (buffer, value) -> {
+                buffer.writeVarInt(value.stacks.size());
+                value.stacks.forEach(stack -> ItemStack.OPTIONAL_STREAM_CODEC.encode(buffer, stack));
+            },
+            buffer -> {
+                int size = Math.min(256, buffer.readVarInt());
+                List<ItemStack> stacks = new ArrayList<>(size);
+                for (int i = 0; i < size; i++) {
+                    stacks.add(ItemStack.OPTIONAL_STREAM_CODEC.decode(buffer));
+                }
+                return new StockRequestPrefill(List.copyOf(stacks));
+            }
+        );
+
         @Override
         public Type<? extends CustomPacketPayload> type() {
             return TYPE;
