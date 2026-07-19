@@ -1,0 +1,29 @@
+{
+  "credit": "Create: Handheld Cannon",
+  "parent": "createhandheldcannon:item/handheld_cannon/item",
+  "textures": {
+    "iron": "create:block/industrial_iron_block",
+    "brass": "create:block/brass_casing",
+    "particle": "create:block/brass_casing"
+  },
+  "elements": [
+    {
+      "from": [7.5, 8.75, 1.8], "to": [13.5, 10.25, 3.8],
+      "faces": {"north":{"texture":"#iron"},"south":{"texture":"#iron"},"east":{"texture":"#iron"},"west":{"texture":"#iron"},"up":{"texture":"#iron"},"down":{"texture":"#iron"}}
+    },
+    {
+      "from": [9.75, 6.5, 1.8], "to": [11.25, 12.5, 3.8],
+      "faces": {"north":{"texture":"#iron"},"south":{"texture":"#iron"},"east":{"texture":"#iron"},"west":{"texture":"#iron"},"up":{"texture":"#iron"},"down":{"texture":"#iron"}}
+    },
+    {
+      "from": [7.5, 8.75, 1.8], "to": [13.5, 10.25, 3.8],
+      "rotation": {"angle": 45, "axis": "z", "origin": [10.5, 9.5, 2.8]},
+      "neoforge_data": {"calculate_normals": true},
+      "faces": {"north":{"texture":"#iron"},"south":{"texture":"#iron"},"east":{"texture":"#iron"},"west":{"texture":"#iron"},"up":{"texture":"#iron"},"down":{"texture":"#iron"}}
+    },
+    {
+      "from": [9.4, 8.4, 1.4], "to": [11.6, 10.6, 4.2],
+      "faces": {"north":{"texture":"#brass"},"south":{"texture":"#brass"},"east":{"texture":"#brass"},"west":{"texture":"#brass"},"up":{"texture":"#brass"},"down":{"texture":"#brass"}}
+    }
+  ]
+}
