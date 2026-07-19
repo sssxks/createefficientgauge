@@ -1,0 +1,12 @@
+{
+  "name": "icon-render",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Render docs/icon.svg to the mod icon PNG.",
+  "scripts": {
+    "render": "node render.js"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

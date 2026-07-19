@@ -9,3 +9,4 @@ out/
 __pycache__/
 
 .eclipse/
+node_modules/
