@@ -34,7 +34,7 @@ public final class CannonMenu extends AbstractContainerMenu {
         this.hand = hand;
         this.cannonInventory = new CannonItemHandler(cannonStack(inventory.player));
 
-        addSlot(new SlotItemHandler(cannonInventory, CannonState.FUEL_SLOT, 15, 65));
+        addSlot(new SlotItemHandler(cannonInventory, CannonState.FUEL_SLOT, 15, 67));
         for (int i = 0; i < CannonState.SCHEMATIC_COUNT; i++) {
             addSlot(new SlotItemHandler(cannonInventory, CannonState.SCHEMATIC_START + i, 47 + i * 22, 19));
         }

@@ -12,6 +12,8 @@ client mods and their development tools.
 - `tools/jfr-analyzer` analyzes recordings produced by the profiler.
 - `tools/sparkprofile` is a zero-dependency agent/debugging reader for raw
   `.sparkprofile` files.
+- `tools/handheld-cannon-art` regenerates the Handheld Cannon item/GUI textures
+  and renders model previews.
 
 The mods do not depend on each other. The integration client run loads both for
 development convenience.

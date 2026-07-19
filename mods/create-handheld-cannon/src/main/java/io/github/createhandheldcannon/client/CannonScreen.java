@@ -23,8 +23,8 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 
 public final class CannonScreen extends AbstractSimiContainerScreen<CannonMenu> {
-    private static final AllGuiTextures BG_TOP = AllGuiTextures.SCHEMATICANNON_TOP;
-    private static final AllGuiTextures BG_BOTTOM = AllGuiTextures.SCHEMATICANNON_BOTTOM;
+    private static final CannonGuiTextures BG_TOP = CannonGuiTextures.TOP;
+    private static final CannonGuiTextures BG_BOTTOM = CannonGuiTextures.BOTTOM;
 
     private final List<IconButton> schematicButtons = new ArrayList<>();
     private final List<IconButton> settingButtons = new ArrayList<>();
@@ -60,8 +60,8 @@ public final class CannonScreen extends AbstractSimiContainerScreen<CannonMenu> 
             addRenderableWidget(button);
         }
 
-        todoValue = new Label(x + 111, y + 73, CommonComponents.EMPTY).colored(0xDDEEFF);
-        todoInput = new ScrollInput(x + 102, y + 67, 50, 18)
+        todoValue = new Label(x + 131, y + 74, CommonComponents.EMPTY).colored(0xDDEEFF);
+        todoInput = new ScrollInput(x + 122, y + 68, 52, 18)
             .withRange(0, CannonState.MAX_TODO + 1)
             .withShiftStep(10)
             .titled(Component.translatable("gui.createhandheldcannon.todo"))
@@ -141,30 +141,30 @@ public final class CannonScreen extends AbstractSimiContainerScreen<CannonMenu> 
 
         BG_TOP.render(graphics, x, y);
         BG_BOTTOM.render(graphics, x, y + BG_TOP.getHeight());
-        AllGuiTextures.SCHEMATIC_TITLE.render(graphics, x, y - 2);
+        CannonGuiTextures.TITLE.render(graphics, x, y - 2);
         graphics.drawString(font, title, x + (BG_TOP.getWidth() - 8 - font.width(title)) / 2, y + 2,
             0x505050, false);
 
         int selected = CannonState.selected(cannon());
         if (!CannonState.selectedSchematic(cannon()).isEmpty()) {
-            AllGuiTextures.SCHEMATICANNON_HIGHLIGHT.render(graphics, x + 41 + selected * 22, y + 14);
+            CannonGuiTextures.HIGHLIGHT.render(graphics, x + 42 + selected * 22, y + 14);
         }
 
         int perPowder = Math.max(1,
             com.simibubi.create.infrastructure.config.AllConfigs.server().schematics
                 .schematicannonShotsPerGunpowder.get());
         float fuel = Mth.clamp(CannonState.remainingShots(cannon()) / (float) perPowder, 0, 1);
-        AllGuiTextures fuelTexture = AllGuiTextures.SCHEMATICANNON_FUEL;
-        graphics.blit(fuelTexture.location, x + 36, y + 66, fuelTexture.getStartX(), fuelTexture.getStartY(),
+        CannonGuiTextures fuelTexture = CannonGuiTextures.FUEL;
+        graphics.blit(fuelTexture.location, x + 36, y + 69, fuelTexture.getStartX(), fuelTexture.getStartY(),
             (int) (fuelTexture.getWidth() * fuel), fuelTexture.getHeight());
 
-        graphics.drawString(font, Component.translatable("gui.createhandheldcannon.todo"), x + 72, y + 72,
+        graphics.drawString(font, Component.translatable("gui.createhandheldcannon.todo"), x + 95, y + 74,
             0xDDEEFF, false);
         ItemStack selectedSchematic = CannonState.selectedSchematic(cannon());
         Component selectedName = selectedSchematic.isEmpty()
             ? Component.translatable("gui.createhandheldcannon.empty") : selectedSchematic.getHoverName();
         String clippedName = font.plainSubstrByWidth(selectedName.getString(), 124);
-        graphics.drawCenteredString(font, clippedName, x + 106, y + 92, 0xDDEEFF);
+        graphics.drawCenteredString(font, clippedName, x + 106, y + 94, 0xDDEEFF);
 
         GuiGameElement.of(cannon()).<GuiGameElement.GuiRenderBuilder>at(
             x + BG_TOP.getWidth(), y + BG_TOP.getHeight() + BG_BOTTOM.getHeight() - 48, -200)
@@ -174,10 +174,10 @@ public final class CannonScreen extends AbstractSimiContainerScreen<CannonMenu> 
     @Override
     protected void renderForeground(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         int fuelX = leftPos + 36;
-        int fuelY = topPos + 66;
+        int fuelY = topPos + 69;
         if (mouseX >= fuelX && mouseY >= fuelY
-            && mouseX <= fuelX + AllGuiTextures.SCHEMATICANNON_FUEL.getWidth()
-            && mouseY <= fuelY + AllGuiTextures.SCHEMATICANNON_FUEL.getHeight()) {
+            && mouseX <= fuelX + CannonGuiTextures.FUEL.getWidth()
+            && mouseY <= fuelY + CannonGuiTextures.FUEL.getHeight()) {
             int perPowder = Math.max(1,
                 com.simibubi.create.infrastructure.config.AllConfigs.server().schematics
                     .schematicannonShotsPerGunpowder.get());

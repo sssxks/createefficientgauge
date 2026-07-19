@@ -17,7 +17,7 @@ import net.minecraft.world.phys.Vec3;
 public final class HandheldCannonItemRenderer extends CustomRenderedItemModelRenderer {
     private static final PartialModel COG =
         PartialModel.of(CreateHandheldCannon.id("item/handheld_cannon/cog"));
-    private static final Vec3 COG_CENTER = new Vec3(10.5 / 16f, 9.5 / 16f, 2.8 / 16f);
+    private static final Vec3 COG_CENTER = new Vec3(8 / 16f, 8.5 / 16f, 7.5 / 16f);
 
     @Override
     protected void render(ItemStack stack, CustomRenderedItemModel model, PartialItemModelRenderer renderer,
