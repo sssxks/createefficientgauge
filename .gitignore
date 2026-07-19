@@ -6,5 +6,6 @@ runs/
 out/
 .idea/
 *.iml
+__pycache__/
 
 .eclipse/

@@ -10,6 +10,8 @@ client mods and their development tools.
 - [Minecraft Frame Profiler](mods/minecraft-frame-profiler/README.md) records a
   bounded rolling JFR window for diagnosing slow client frames.
 - `tools/jfr-analyzer` analyzes recordings produced by the profiler.
+- `tools/sparkprofile` is a zero-dependency agent/debugging reader for raw
+  `.sparkprofile` files.
 
 The mods do not depend on each other. The integration client run loads both for
 development convenience.
