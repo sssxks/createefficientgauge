@@ -1,11 +1,14 @@
 package io.github.createhandheldcannon;
 
+import com.simibubi.create.AllBlocks;
+import com.simibubi.create.AllCreativeModeTabs;
+
 import io.github.createhandheldcannon.content.CannonMenu;
 import io.github.createhandheldcannon.content.HandheldCannonItem;
 import io.github.createhandheldcannon.net.CannonNetworking;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.bus.api.IEventBus;
@@ -41,8 +44,12 @@ public final class CreateHandheldCannon {
     }
 
     private void addCreativeTabContents(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
-            event.accept(HANDHELD_CANNON.get());
+        if (event.getTabKey().equals(AllCreativeModeTabs.BASE_CREATIVE_TAB.getKey())) {
+            event.insertBefore(
+                AllBlocks.SCHEMATICANNON.asStack(),
+                HANDHELD_CANNON.get().getDefaultInstance(),
+                CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS
+            );
         }
     }
 
