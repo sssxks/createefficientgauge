@@ -27,9 +27,9 @@ public final class HandheldCannonItemRenderer extends CustomRenderedItemModelRen
         pose.pushPose();
         float angle = (AnimationTickHolder.getRenderTime() * -2.5f) % 360;
         TransformStack.of(pose)
-            .translate(COG_CENTER)
-            .rotateZDegrees(angle)
-            .translateBack(COG_CENTER);
+            // .translate(COG_CENTER)
+            .rotateZDegrees(angle);
+            // .translateBack(COG_CENTER);
         renderer.renderSolid(COG.get(), light);
         pose.popPose();
     }
