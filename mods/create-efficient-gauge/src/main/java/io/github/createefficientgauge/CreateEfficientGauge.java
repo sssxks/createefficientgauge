@@ -1,6 +1,7 @@
 package io.github.createefficientgauge;
 
 import com.simibubi.create.AllBlockEntityTypes;
+import com.simibubi.create.content.kinetics.speedController.SpeedControllerBlockEntity;
 import com.simibubi.create.content.logistics.factoryBoard.FactoryPanelBlockEntity;
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
 import net.neoforged.api.distmarker.Dist;
@@ -37,6 +38,18 @@ public final class CreateEfficientGauge {
                 // Do not ask Flywheel to skip the whole block-entity renderer.
                 // FactoryPanelRendererMixin makes that decision only while an
                 // actual backend is active and preserves unsupported items.
+                .neverSkipVanillaRender()
+                .apply();
+
+            // Create only retains the rotating shaft of a speed controller.
+            // Its static bracket otherwise goes through SuperByteBuffer and
+            // Iris' immediate vertex path for every visible controller on
+            // every rendered frame. Own the bracket as a retained instance;
+            // the renderer mixin keeps the value-box overlay as a fallback.
+            SimpleBlockEntityVisualizer.builder(
+                (net.minecraft.world.level.block.entity.BlockEntityType<SpeedControllerBlockEntity>) AllBlockEntityTypes.ROTATION_SPEED_CONTROLLER.get()
+            )
+                .factory(SpeedControllerVisual::new)
                 .neverSkipVanillaRender()
                 .apply();
         });

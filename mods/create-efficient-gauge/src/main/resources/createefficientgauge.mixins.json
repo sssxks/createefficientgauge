@@ -4,7 +4,9 @@
   "package": "io.github.createefficientgauge.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "FactoryPanelRendererMixin"
+    "FactoryPanelRendererMixin",
+    "SpeedControllerBlockEntityAccessor",
+    "SpeedControllerRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1
