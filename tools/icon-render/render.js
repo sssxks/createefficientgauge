@@ -1,6 +1,6 @@
 // Renders the mod icon SVG to PNG.
 // Usage: node render.js [srcSvg] [outPng] [size]
-//   Defaults: docs/icon.svg -> mods/create-efficient-gauge/.../icon.png at 512px.
+//   Defaults: docs/icon.svg -> mods/create-efficient-visuals/.../icon.png at 512px.
 const fs = require('fs');
 const path = require('path');
 const { Resvg } = require('@resvg/resvg-js');

@@ -5,8 +5,9 @@ client mods and their development tools.
 
 ## Projects
 
-- [Create Efficient Gauge](mods/create-efficient-gauge/README.md) retains
-  Create factory-gauge rendering through Flywheel.
+- [Create Efficient Visuals](mods/create-efficient-visuals/README.md) retains
+  selected Create visuals through Flywheel and backports chunk-baked rendering
+  for vanilla beds, signs, and decorated pots.
 - [Minecraft Frame Profiler](mods/minecraft-frame-profiler/README.md) records a
   bounded rolling JFR window for diagnosing slow client frames.
 - `tools/jfr-analyzer` analyzes recordings produced by the profiler.
@@ -27,7 +28,7 @@ development convenience.
 Individual artifacts can be built with:
 
 ```powershell
-.\gradlew.bat :mods:create-efficient-gauge:build
+.\gradlew.bat :mods:create-efficient-visuals:build
 .\gradlew.bat :mods:minecraft-frame-profiler:build
 ```
 

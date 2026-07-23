@@ -3,7 +3,7 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
-group = 'io.github.createefficientgauge'
+group = 'io.github.sssxks'
 
 java {
     toolchain {

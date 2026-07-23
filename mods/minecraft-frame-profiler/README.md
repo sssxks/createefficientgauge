@@ -2,7 +2,7 @@
 
 Independent client-side NeoForge 1.21.1 mod for diagnosing Minecraft frame
 pacing with a bounded rolling JDK Flight Recorder session. It has no Create,
-Flywheel, or Create Efficient Gauge dependency.
+Flywheel, or Create Efficient Visuals dependency.
 
 The profiler records exact slow invocations of:
 
@@ -60,10 +60,10 @@ From the repository root:
 
 The jar is written to `mods/minecraft-frame-profiler/build/libs`.
 
-To develop it alongside Create Efficient Gauge:
+To develop it alongside Create Efficient Visuals:
 
 ```powershell
-.\gradlew.bat :mods:create-efficient-gauge:runIntegrationClient
+.\gradlew.bat :mods:create-efficient-visuals:runIntegrationClient
 ```
 
 The integration run is a development convenience; neither production mod

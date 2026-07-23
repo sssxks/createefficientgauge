@@ -2,7 +2,7 @@ plugins {
     id 'application'
 }
 
-group = 'io.github.createefficientgauge'
+group = 'io.github.sssxks'
 version = '0.1.0'
 
 java {

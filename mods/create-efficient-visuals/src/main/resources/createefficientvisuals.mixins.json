@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.sssxks.createefficientvisuals.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "create.FactoryPanelRendererMixin",
+    "create.SpeedControllerBlockEntityAccessor",
+    "create.SpeedControllerRendererMixin",
+    "vanilla.BedRendererMixin",
+    "vanilla.BlockStateRenderShapeMixin",
+    "vanilla.DecoratedPotBlockEntityMixin",
+    "vanilla.DecoratedPotRendererMixin",
+    "vanilla.ModelBakeryAccessor",
+    "vanilla.SectionRenderDispatcherMixin",
+    "vanilla.SignRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

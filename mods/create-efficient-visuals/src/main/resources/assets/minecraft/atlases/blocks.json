@@ -1,0 +1,24 @@
+{
+  "sources": [
+    {
+      "type": "directory",
+      "source": "entity/bed",
+      "prefix": "entity/bed/"
+    },
+    {
+      "type": "directory",
+      "source": "entity/signs",
+      "prefix": "entity/signs/"
+    },
+    {
+      "type": "directory",
+      "source": "entity/signs/hanging",
+      "prefix": "entity/signs/hanging/"
+    },
+    {
+      "type": "directory",
+      "source": "entity/decorated_pot",
+      "prefix": "entity/decorated_pot/"
+    }
+  ]
+}
