@@ -6,7 +6,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -21,9 +20,12 @@ abstract class SodiumRenderSectionMixin {
     @Shadow(remap = false)
     public abstract SectionPos getPosition();
 
-    @Inject(method = "setInfo", at = @At("TAIL"), require = 0, remap = false)
+    /*
+     * setInfo has two direct return instructions. TAIL only selects the last
+     * one, which is the null-info path; normal chunk builds return earlier.
+     */
+    @Inject(method = "setInfo", at = @At("RETURN"), require = 0, remap = false)
     private void createEfficientVisuals$onSectionUploaded(
-        @Coerce Object info,
         CallbackInfoReturnable<Boolean> cir
     ) {
         SectionRebuildCallbacks.rebuilt(this.getPosition().asLong());
