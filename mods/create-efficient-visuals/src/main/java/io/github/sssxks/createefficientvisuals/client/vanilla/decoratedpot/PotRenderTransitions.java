@@ -41,16 +41,40 @@ public final class PotRenderTransitions {
             now + pot.lastWobbleStyle.duration,
             now + REBUILD_FALLBACK_TICKS
         );
+        DecoratedPotRenderState renderState = state(pot);
+        boolean dynamicVisible =
+            renderState.createefficientvisuals$dynamicRender();
         Transition previous = ACTIVE.put(pot, transition);
         if (previous != null) {
-            previous.cancelReveal.run();
             previous.cancelRestore.run();
+
+            if (dynamicVisible) {
+                previous.cancelReveal.run();
+                transition.revealed = true;
+                renderState.createefficientvisuals$setRenderState(
+                    true,
+                    true
+                );
+                if (previous.restoring) {
+                    markSectionDirty(pot);
+                }
+                return;
+            }
+
+            /*
+             * A second event can arrive while the first hidden-mesh rebuild
+             * is still in flight. Keep its completion callback: that upload
+             * is also valid for the new wobble and avoids restarting the
+             * hand-off with neither representation visible.
+             */
+            transition.cancelReveal = previous.cancelReveal;
+            return;
         }
 
-        state(pot).createefficientvisuals$setRenderState(true, false);
+        renderState.createefficientvisuals$setRenderState(true, false);
         transition.cancelReveal = rebuild(
             pot,
-            () -> revealDynamic(pot, transition.generation)
+            () -> revealDynamic(pot)
         );
     }
 
@@ -79,7 +103,7 @@ public final class PotRenderTransitions {
                 !transition.revealed
                     && now >= transition.revealDeadline
             ) {
-                revealDynamic(pot, transition.generation);
+                revealDynamic(pot);
             }
             if (!transition.restoring && now >= transition.endTick) {
                 transition.restoring = true;
@@ -108,14 +132,10 @@ public final class PotRenderTransitions {
         markSectionDirty(pot);
     }
 
-    private static void revealDynamic(
-        DecoratedPotBlockEntity pot,
-        long generation
-    ) {
+    private static void revealDynamic(DecoratedPotBlockEntity pot) {
         Transition current = ACTIVE.get(pot);
         if (
             current == null
-                || current.generation != generation
                 || current.restoring
         ) {
             return;
