@@ -26,6 +26,7 @@ abstract class BedRendererMixin {
     ) {
         if (
             Features.beds()
+                && bed.getLevel() != null
                 && "minecraft".equals(
                     BuiltInRegistries.BLOCK
                         .getKey(bed.getBlockState().getBlock())

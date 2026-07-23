@@ -1,6 +1,7 @@
 package io.github.sssxks.createefficientvisuals.mixin.vanilla;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import io.github.sssxks.createefficientvisuals.client.vanilla.decoratedpot.DecoratedPotImmediateRenderer;
 import io.github.sssxks.createefficientvisuals.client.vanilla.decoratedpot.DecoratedPotRenderState;
 import io.github.sssxks.createefficientvisuals.compat.Features;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -26,9 +27,20 @@ abstract class DecoratedPotRendererMixin {
     ) {
         if (
             Features.decoratedPots()
-                && !((DecoratedPotRenderState)(Object)pot)
-                    .createefficientvisuals$dynamicRender()
+                && pot.getLevel() != null
         ) {
+            if (
+                ((DecoratedPotRenderState)(Object)pot)
+                    .createefficientvisuals$dynamicRender()
+            ) {
+                DecoratedPotImmediateRenderer.render(
+                    pot,
+                    partialTick,
+                    poseStack,
+                    buffers,
+                    overlay
+                );
+            }
             ci.cancel();
         }
     }

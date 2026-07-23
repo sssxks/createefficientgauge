@@ -7,6 +7,7 @@
     "create.FactoryPanelRendererMixin",
     "create.SpeedControllerBlockEntityAccessor",
     "create.SpeedControllerRendererMixin",
+    "compat.sodium.SodiumRenderSectionMixin",
     "vanilla.BedRendererMixin",
     "vanilla.BlockStateRenderShapeMixin",
     "vanilla.DecoratedPotBlockEntityMixin",

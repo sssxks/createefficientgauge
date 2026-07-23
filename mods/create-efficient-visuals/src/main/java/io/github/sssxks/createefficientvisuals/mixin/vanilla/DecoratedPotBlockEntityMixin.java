@@ -7,6 +7,7 @@ import io.github.sssxks.createefficientvisuals.compat.Features;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.entity.DecoratedPotBlockEntity;
+import net.minecraft.world.level.block.entity.PotDecorations;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -25,6 +26,10 @@ abstract class DecoratedPotBlockEntityMixin
 
     @Unique
     private boolean createefficientvisuals$dynamicRender;
+
+    @Unique
+    private PotDecorations createefficientvisuals$previousDecorations =
+        PotDecorations.EMPTY;
 
     public ModelData getModelData() {
         DecoratedPotBlockEntity self =
@@ -71,6 +76,16 @@ abstract class DecoratedPotBlockEntityMixin
         }
     }
 
+    @Inject(method = "loadAdditional", at = @At("HEAD"))
+    private void createefficientvisuals$captureDecorations(
+        CompoundTag tag,
+        HolderLookup.Provider registries,
+        CallbackInfo ci
+    ) {
+        createefficientvisuals$previousDecorations =
+            ((DecoratedPotBlockEntity)(Object)this).getDecorations();
+    }
+
     @Inject(method = "loadAdditional", at = @At("TAIL"))
     private void createefficientvisuals$refreshDecorations(
         CompoundTag tag,
@@ -83,6 +98,9 @@ abstract class DecoratedPotBlockEntityMixin
             Features.decoratedPots()
                 && self.getLevel() != null
                 && self.getLevel().isClientSide
+                && !createefficientvisuals$previousDecorations.equals(
+                    self.getDecorations()
+                )
         ) {
             PotRenderTransitions.refreshModel(self);
         }

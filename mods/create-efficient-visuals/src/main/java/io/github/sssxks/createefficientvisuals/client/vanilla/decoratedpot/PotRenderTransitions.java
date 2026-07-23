@@ -14,7 +14,12 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
  */
 public final class PotRenderTransitions {
 
-    private static final int REBUILD_FALLBACK_TICKS = 2;
+    /**
+     * Renderer-specific callbacks normally complete the hand-off as soon as
+     * the rebuilt section reaches the GPU. This timeout is only a safety net,
+     * and must not race a normal chunk rebuild.
+     */
+    private static final int REBUILD_FALLBACK_TICKS = 20;
     private static final Map<
         DecoratedPotBlockEntity,
         Transition
