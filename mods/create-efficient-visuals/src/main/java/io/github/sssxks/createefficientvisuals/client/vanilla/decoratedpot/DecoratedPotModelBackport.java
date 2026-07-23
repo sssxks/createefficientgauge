@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.block.BlockModelShaper;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.Material;
+import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
@@ -35,7 +36,10 @@ public final class DecoratedPotModelBackport {
             Direction.class
         );
         for (Direction direction : Direction.Plane.HORIZONTAL) {
-            models.put(direction, bakeForDirection(context, direction));
+            models.put(
+                direction,
+                bakeForDirection(context, direction, false)
+            );
         }
 
         for (
@@ -54,19 +58,75 @@ public final class DecoratedPotModelBackport {
                     )
                 );
         }
+
+        DecoratedPotBakedModel itemModel = bakeForDirection(
+            context,
+            Direction.NORTH,
+            true
+        );
+        event
+            .getModels()
+            .put(
+                ModelResourceLocation.inventory(
+                    BuiltInRegistries.ITEM.getKey(
+                        Items.DECORATED_POT
+                    )
+                ),
+                new DecoratedPotItemBakedModel(itemModel)
+            );
     }
 
-    private static BakedModel bakeForDirection(
+    private static DecoratedPotBakedModel bakeForDirection(
         ModelBakeContext context,
-        Direction direction
+        Direction direction,
+        boolean itemModel
     ) {
         float rotation = direction.toYRot() + 180.0F;
         BakedModel base = context.bakeJson(
-            """
-            {
-              "parent": "createefficientvisuals:block/decorated_pot_base"
-            }
-            """,
+            itemModel
+                ? """
+                  {
+                    "parent": "createefficientvisuals:block/decorated_pot_base",
+                    "gui_light": "front",
+                    "display": {
+                      "thirdperson_righthand": {
+                        "rotation": [0, 90, 0],
+                        "translation": [0, 2, 0.5],
+                        "scale": [0.375, 0.375, 0.375]
+                      },
+                      "firstperson_righthand": {
+                        "rotation": [0, 90, 0],
+                        "translation": [0, 0, 0],
+                        "scale": [0.375, 0.375, 0.375]
+                      },
+                      "gui": {
+                        "rotation": [30, 45, 0],
+                        "translation": [0, 0, 0],
+                        "scale": [0.6, 0.6, 0.6]
+                      },
+                      "ground": {
+                        "rotation": [0, 0, 0],
+                        "translation": [0, 1, 0],
+                        "scale": [0.25, 0.25, 0.25]
+                      },
+                      "head": {
+                        "rotation": [0, 180, 0],
+                        "translation": [0, 16, 0],
+                        "scale": [1.5, 1.5, 1.5]
+                      },
+                      "fixed": {
+                        "rotation": [0, 180, 0],
+                        "translation": [0, 0, 0],
+                        "scale": [0.5, 0.5, 0.5]
+                      }
+                    }
+                  }
+                  """
+                : """
+                  {
+                    "parent": "createefficientvisuals:block/decorated_pot_base"
+                  }
+                  """,
             ModelBakeContext.yRotation(rotation)
         );
 

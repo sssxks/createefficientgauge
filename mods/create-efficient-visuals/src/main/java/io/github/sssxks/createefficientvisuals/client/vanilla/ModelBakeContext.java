@@ -15,6 +15,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.model.SimpleModelState;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /**
  * Small adapter for baking generated child models during ModifyBakingResult.
@@ -39,6 +40,17 @@ public final class ModelBakeContext implements ModelBaker {
         );
         return new SimpleModelState(
             new Transformation(null, rotation, null, null)
+        );
+    }
+
+    public static ModelState translation(float x, float y, float z) {
+        return new SimpleModelState(
+            new Transformation(
+                new Vector3f(x, y, z),
+                null,
+                null,
+                null
+            )
         );
     }
 
