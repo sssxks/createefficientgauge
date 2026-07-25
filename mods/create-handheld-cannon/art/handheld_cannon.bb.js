@@ -3,15 +3,13 @@
 //   node tools/blockbench/run.mjs mods/create-handheld-cannon/art/handheld_cannon.bb.js \
 //     --out mods/create-handheld-cannon/art/out --blockbench <Blockbench.exe>
 //
-// The job lays out every face on the texture with its own shelf packer and
+// The job lets Blockbench's own template generator (the packer behind
+// "Create Texture > Template") lay out every face on the texture, then
 // paints the texture procedurally into those rects, so UVs can never drift
 // out of sync with the texture.
 
-const TEXTURE_SIZE = 128;
+const TEXTURE_SIZE = 128; // initial/maximum UV space; the packer may shrink it
 const PX_PER_UNIT = 2; // texture pixels per model unit (16-unit cube -> 32 px)
-// Blockbench stores java_block face UVs in texture pixels internally
-// (0..TEXTURE_SIZE); the exporter divides by TEXTURE_SIZE / 16.
-const UV_PER_PX = 1;
 
 // --- color helpers ---------------------------------------------------------
 
@@ -80,7 +78,7 @@ function woodPainter(base, seed) {
 }
 
 // Orange side plate: raised bright frame, recessed darker inner panel.
-function platePainter(base) {
+function platePainter(base, dark) {
     return (ctx, x, y, w, h) => {
         paintNoise(ctx, x, y, w, h, base, 6, 3);
         ctx.fillStyle = shade(base, 26);
@@ -93,7 +91,7 @@ function platePainter(base) {
         ctx.fillRect(x + 1, y + 1, 1, h - 2);
         ctx.fillRect(x + 1, y + h - 2, w - 2, 1);
         ctx.fillRect(x + w - 2, y + 1, 1, h - 2);
-        paintNoise(ctx, x + 2, y + 2, w - 4, h - 4, shade(base, -20), 5, 4);
+        paintNoise(ctx, x + 2, y + 2, w - 4, h - 4, dark, 5, 4);
     };
 }
 
@@ -117,9 +115,9 @@ const MATERIALS = {
     darkMetal: metalPainter("#3b332c", 5, 14),   // frame, guard, cap, cog
     brass: metalPainter("#c17c2e", 9, 15),       // body casing
     brassBand: metalPainter("#b06f26", 8, 16),   // front band
-    plate: platePainter("#c17c2e"),              // ornate side plates
+    plate: platePainter("#c17c2e", "#9a5f1e"),    // ornate side plates
     bore: borePainter("#9a9aa2"),                // muzzle face
-    wood: woodPainter("#a8651f", 17),            // grip
+    wood: woodPainter("#b5701f", 17),            // grip
 };
 
 // --- geometry ---------------------------------------------------------------
@@ -184,21 +182,21 @@ module.exports = async function buildHandheldCannon({ output, log }) {
     Project.texture_height = TEXTURE_SIZE;
     Project.box_uv = false;
 
-    // Blank texture up front so cubes bind to it on creation.
+    // Blank texture up front so cubes bind to it on creation. The template
+    // generator below only packs faces that have a texture.
     const canvas = document.createElement("canvas");
     canvas.width = TEXTURE_SIZE;
     canvas.height = TEXTURE_SIZE;
     const ctx = canvas.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#ff00ff";
     ctx.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
 
-    const texture = new Texture({ id: "main", name: "handheld_cannon.png" });
-    const waitForLoad = () => new Promise((resolve, reject) => {
-        texture.img.addEventListener("load", resolve, { once: true });
-        texture.img.addEventListener("error", reject, { once: true });
+    const waitForLoad = (tex) => new Promise((resolve, reject) => {
+        tex.img.addEventListener("load", resolve, { once: true });
+        tex.img.addEventListener("error", reject, { once: true });
     });
-    let loaded = waitForLoad();
+    const texture = new Texture({ id: "main", name: "handheld_cannon.png" });
+    let loaded = waitForLoad(texture);
     texture.fromDataURL(canvas.toDataURL("image/png")).add(false);
     await loaded;
 
@@ -217,51 +215,57 @@ module.exports = async function buildHandheldCannon({ output, log }) {
         cube.faceOverrides = spec.faces || {};
     }
 
-    // Lay out every face on the texture with a simple shelf packer, assign the
-    // UVs explicitly, and paint the face rect. Doing this ourselves keeps the
-    // painted pixels and the exported UVs in sync by construction.
-    const FACE_DIMS = {
-        north: (sx, sy, sz) => [sx, sy],
-        south: (sx, sy, sz) => [sx, sy],
-        east: (sx, sy, sz) => [sz, sy],
-        west: (sx, sy, sz) => [sz, sy],
-        up: (sx, sy, sz) => [sx, sz],
-        down: (sx, sy, sz) => [sx, sz],
-    };
-    let shelfX = 0;
-    let shelfY = 0;
-    let shelfH = 0;
+    // Let Blockbench's own template generator (the packer behind
+    // "Create Texture > Template") lay out every face: it sorts faces by
+    // area, scan-packs them with padding, shrinks the texture to a power of
+    // two, and assigns the resulting UVs. java_block is not a single-texture
+    // format, so it packs the current selection; select everything first.
+    Cube.all.forEach((cube) => cube.markAsSelected());
+    let packedTexture;
+    let packedLoaded;
+    await TextureGenerator.generateTemplate({
+        type: "template",
+        rearrange_uv: true,
+        resolution: PX_PER_UNIT * 16,
+        power: true,
+        double_use: false,
+        padding: false,
+    }, (dataUrl) => {
+        packedTexture = new Texture({ id: "packed", name: "handheld_cannon.png" });
+        packedLoaded = waitForLoad(packedTexture);
+        packedTexture.fromDataURL(dataUrl).add(false);
+        return packedTexture;
+    });
+    if (!packedTexture) {
+        throw new Error("TextureGenerator did not produce a texture");
+    }
+    await packedLoaded;
+    texture.remove(); // blank placeholder; all faces now reference packedTexture
+
+    // Paint each face's packed rect. UVs are in UV units (0..uv_width); the
+    // packer may flip up/down faces, so use the bounding rect.
+    const width = packedTexture.width;
+    const height = packedTexture.height;
+    const scale = width / packedTexture.getUVWidth();
+    canvas.width = width;
+    canvas.height = height;
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#ff00ff";
+    ctx.fillRect(0, 0, width, height);
+
     for (const cube of Cube.all) {
-        const sx = cube.to[0] - cube.from[0];
-        const sy = cube.to[1] - cube.from[1];
-        const sz = cube.to[2] - cube.from[2];
         for (const [faceName, face] of Object.entries(cube.faces)) {
-            const [fu, fv] = FACE_DIMS[faceName](sx, sy, sz);
-            const w = Math.max(1, Math.round(fu * PX_PER_UNIT));
-            const h = Math.max(1, Math.round(fv * PX_PER_UNIT));
-            if (shelfX + w > TEXTURE_SIZE) {
-                shelfX = 0;
-                shelfY += shelfH;
-                shelfH = 0;
-            }
-            if (shelfY + h > TEXTURE_SIZE) {
-                throw new Error(`texture is full while placing ${cube.name}.${faceName}`);
-            }
-            const x = shelfX;
-            const y = shelfY;
-            shelfX += w;
-            shelfH = Math.max(shelfH, h);
-
-            face.uv = [x * UV_PER_PX, y * UV_PER_PX, (x + w) * UV_PER_PX, (y + h) * UV_PER_PX];
-            face.texture = texture.uuid;
-
+            const x = Math.round(Math.min(face.uv[0], face.uv[2]) * scale);
+            const y = Math.round(Math.min(face.uv[1], face.uv[3]) * scale);
+            const w = Math.max(1, Math.round(Math.abs(face.uv[2] - face.uv[0]) * scale));
+            const h = Math.max(1, Math.round(Math.abs(face.uv[3] - face.uv[1]) * scale));
             const material = cube.faceOverrides[faceName] || cube.material;
             MATERIALS[material](ctx, x, y, w, h);
         }
     }
 
-    loaded = waitForLoad();
-    texture.fromDataURL(canvas.toDataURL("image/png"));
+    loaded = waitForLoad(packedTexture);
+    packedTexture.fromDataURL(canvas.toDataURL("image/png"));
     await loaded;
     Canvas.updateAll();
 
@@ -280,8 +284,8 @@ module.exports = async function buildHandheldCannon({ output, log }) {
     }
     model.display = DISPLAY;
 
-    output.model("models/item/handheld_cannon.json", `${JSON.stringify(model, null, 2)}\n`);
-    output.texture("textures/item/handheld_cannon.png", texture);
+    output.model("models/item/handheld_cannon.json", `${JSON.stringify(model, null)}\n`);
+    output.texture("textures/item/handheld_cannon.png", packedTexture);
 
     Preview.selected.loadAnglePreset(DefaultCameraPresets[1]);
     Preview.selected.controls.target.set(8, 8, 3);
@@ -294,6 +298,12 @@ module.exports = async function buildHandheldCannon({ output, log }) {
     Preview.selected.controls.update();
     Preview.selected.render();
     await output.preview("previews/handheld_cannon_side.png", { crop: true, height: 512, width: 512 });
+
+    Preview.selected.camera.position.set(8, 11, -60);
+    Preview.selected.controls.target.set(8, 8, 3);
+    Preview.selected.controls.update();
+    Preview.selected.render();
+    await output.preview("previews/handheld_cannon_front.png", { crop: true, height: 512, width: 512 });
 
     log(`Built ${Cube.all.length} cubes`);
     return { cubes: Cube.all.length };
