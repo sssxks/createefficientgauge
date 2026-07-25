@@ -288,9 +288,7 @@ public final class ClientCannonController {
                     point.x, point.y, point.z, delta.x * 0.01, delta.y * 0.01, delta.z * 0.01);
             }
         }
-        if (minecraft.player != null) {
-            minecraft.player.swing(InteractionHand.MAIN_HAND);
-        }
+        CannonRecoil.trigger();
     }
 
     private static void initializePreview(Minecraft minecraft, ItemStack schematic) {

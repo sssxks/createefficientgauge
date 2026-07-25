@@ -130,9 +130,11 @@ const GRIP_PIVOT = [8, 7, 11.75];
 const GRIP_ANGLE = -22.5;
 
 const CUBES = [
-    { name: "barrel", material: "steel", from: [6.5, 8.5, -7], to: [9.5, 11.5, 6],
+    // The barrel's rear end reaches well into the body casing so the tube
+    // reads as seated in the frame, not floating in front of it.
+    { name: "barrel", material: "steel", from: [6.5, 8.5, -4], to: [9.5, 11.5, 9.5],
       rotation: [BARREL_ANGLE, 0, 0], origin: BARREL_PIVOT },
-    { name: "muzzle_ring", material: "steelDark", from: [6, 8, -9], to: [10, 12, -7],
+    { name: "muzzle_ring", material: "steelDark", from: [6, 8, -6], to: [10, 12, -4],
       rotation: [BARREL_ANGLE, 0, 0], origin: BARREL_PIVOT,
       faces: { north: "bore" } },
     { name: "cradle", material: "steel", from: [6, 7, 5], to: [10, 9.5, 8] },
@@ -144,8 +146,12 @@ const CUBES = [
       faces: { west: "plate" } },
     { name: "plate_right", material: "brass", from: [10.25, 6.75, 7], to: [11, 11.5, 12],
       faces: { east: "plate" } },
-    { name: "bolt_left", material: "steelLight", from: [4.25, 8.25, 8.5], to: [5.25, 9.75, 10] },
-    { name: "bolt_right", material: "steelLight", from: [10.75, 8.25, 8.5], to: [11.75, 9.75, 10] },
+    // Side bolts: square plates centered on the side plates, rotated 45
+    // degrees so they read as diamonds like on the design.
+    { name: "bolt_left", material: "steelLight", from: [4.25, 7.875, 8.25], to: [5, 10.375, 10.75],
+      rotation: [45, 0, 0], origin: [4.625, 9.125, 9.5] },
+    { name: "bolt_right", material: "steelLight", from: [11, 7.875, 8.25], to: [11.75, 10.375, 10.75],
+      rotation: [45, 0, 0], origin: [11.375, 9.125, 9.5] },
     { name: "breech", material: "darkMetal", from: [6, 7, 12.5], to: [10, 11, 14] },
     { name: "cog", material: "darkMetal", from: [4.75, 7.25, 12], to: [5.5, 10.75, 13.5] },
     { name: "cog_tooth_top", material: "darkMetal", from: [4.75, 10.75, 12.5], to: [5.5, 11.25, 13] },
@@ -163,14 +169,15 @@ const CUBES = [
 ];
 
 const DISPLAY = {
-    thirdperson_righthand: { rotation: [0, -15, 0], translation: [0, 1, -3] },
-    thirdperson_lefthand: { rotation: [0, -15, 0], translation: [0, 1, -3] },
+    thirdperson_righthand: { rotation: [0, -15, 0], translation: [1.75, 1.75, -4] },
+    thirdperson_lefthand: { rotation: [0, -15, 0], translation: [1.75, 1.75, -4] },
     firstperson_righthand: { rotation: [5, 5, 5], translation: [0.25, 5, 0.75] },
     firstperson_lefthand: { rotation: [5, 5, 5], translation: [0.25, 5, 0.75] },
     ground: { rotation: [0, 0, 90], translation: [0, -1.3, 0], scale: [0.55, 0.55, 0.55] },
-    gui: { rotation: [64, 47, -47], translation: [0.25, 0.5, 0], scale: [0.55, 0.55, 0.55] },
-    head: { translation: [0, 8, 0], scale: [1.1, 1.1, 1.1] },
-    fixed: { rotation: [0, 90, 0], translation: [0.5, 0.5, -1], scale: [0.55, 0.55, 0.55] },
+    gui: { rotation: [22.5, 45, 0], translation: [1.25, -1.35, 0], scale: [0.7, 0.7, 0.7] },
+    head: { rotation: [-16, 3, 0], translation: [0, 12, -4], scale: [2, 2, 2] },
+    fixed: { rotation: [0, 90, 0], translation: [2, -1, 0], scale: [0.9, 0.9, 0.9] },
+		on_shelf: {rotation: [-19, -180, 0], translation: [0, -1, 5.5], scale: [2, 2, 2]}
 };
 
 // --- job --------------------------------------------------------------------
@@ -284,8 +291,33 @@ module.exports = async function buildHandheldCannon({ output, log }) {
     }
     model.display = DISPLAY;
 
-    output.model("models/item/handheld_cannon.json", `${JSON.stringify(model, null)}\n`);
+    // The geometry lives in handheld_cannon_base.json. The item's own model
+    // is a builtin/entity wrapper so the mod's custom item renderer
+    // (CannonItemRenderer) can add the recoil animation on top.
+    output.model("models/item/handheld_cannon_base.json", `${JSON.stringify(model, null)}\n`);
+    output.model("models/item/handheld_cannon.json", `${JSON.stringify({
+        parent: "minecraft:builtin/entity",
+        textures: { particle: "createhandheldcannon:item/handheld_cannon" },
+    }, null, 2)}\n`);
     output.texture("textures/item/handheld_cannon.png", packedTexture);
+
+    // sync to bbmodel export
+    try {
+        for (const [slot, transform] of Object.entries(DISPLAY)) {
+            const displaySlot = Project.display_settings[slot] || new DisplaySlot();
+            if (transform.rotation) displaySlot.rotation = transform.rotation.slice();
+            if (transform.translation) displaySlot.translation = transform.translation.slice();
+            if (transform.scale) displaySlot.scale = transform.scale.slice();
+            Project.display_settings[slot] = displaySlot;
+        }
+    } catch (error) {
+        log(`could not stage display settings for the bbmodel export: ${error.message}`);
+    }
+    try {
+        output.text("handheld_cannon.bbmodel", Codecs.project.compile());
+    } catch (error) {
+        log(`bbmodel export failed: ${error.message}`);
+    }
 
     Preview.selected.loadAnglePreset(DefaultCameraPresets[1]);
     Preview.selected.controls.target.set(8, 8, 3);
@@ -304,6 +336,22 @@ module.exports = async function buildHandheldCannon({ output, log }) {
     Preview.selected.controls.update();
     Preview.selected.render();
     await output.preview("previews/handheld_cannon_front.png", { crop: true, height: 512, width: 512 });
+
+    // Render the item exactly as the GUI slot sees it.
+    try {
+        Modes.options.display.select();
+        DisplayMode.loadGUI();
+        // The default GUI display camera renders the icon at real GUI pixel
+        // size; zoom in so the preview screenshot is actually inspectable.
+        Preview.selected.camera.zoom = 5;
+        Preview.selected.camera.updateProjectionMatrix();
+        Canvas.updateAll();
+        Preview.selected.render();
+        await output.preview("previews/handheld_cannon_gui.png", { crop: false, height: 512, width: 512 });
+        Modes.options.edit.select();
+    } catch (error) {
+        log(`gui display preview failed: ${error.message}`);
+    }
 
     log(`Built ${Cube.all.length} cubes`);
     return { cubes: Cube.all.length };
