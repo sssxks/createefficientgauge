@@ -123,6 +123,7 @@ public final class ClientCannonController {
         if (minecraft.hitResult instanceof EntityHitResult entityHit
             && StockTickerInteractionHandler.getStockTickerPosition(entityHit.getEntity()) != null) {
             PacketDistributor.sendToServer(new ResupplyRequest(entityHit.getEntity().getId()));
+            event.setSwingHand(false);
             event.setCanceled(true);
             return;
         }
@@ -147,6 +148,7 @@ public final class ClientCannonController {
             PacketDistributor.sendToServer(
                 new PlanRequest(InteractionHand.MAIN_HAND, anchor, settings.getRotation(), settings.getMirror()));
         }
+        event.setSwingHand(false);
         event.setCanceled(true);
     }
 

@@ -41,7 +41,7 @@ public final class CannonRecoil {
             return;
         }
         // Sharp kick, then ease back into the hand.
-        float attack = Math.min(t * 4, 1);
+        float attack = Math.min(t * 10, 1);
         float decay = (float) Math.pow(1 - t, 1.2);
         float kick = attack * decay;
 
