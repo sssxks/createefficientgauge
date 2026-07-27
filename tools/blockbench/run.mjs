@@ -2,7 +2,14 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -382,7 +389,91 @@ export class CdpClient {
   }
 }
 
-function blockbenchJobBootstrap(source, jobPath, outDir, jobArgs) {
+function findRelativeRequires(source) {
+  const requests = [];
+  const pattern = /\brequire\s*\(\s*(["'])([^"']+)\1\s*\)/g;
+  for (const match of source.matchAll(pattern)) {
+    if (
+      (match[2].startsWith("./") || match[2].startsWith("../")) &&
+      !requests.includes(match[2])
+    ) {
+      requests.push(match[2]);
+    }
+  }
+  return requests;
+}
+
+async function firstFile(candidates) {
+  for (const candidate of candidates) {
+    try {
+      if ((await stat(candidate)).isFile()) {
+        return candidate;
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+  return undefined;
+}
+
+async function resolveLocalModule(parentPath, request) {
+  const requestedPath = path.resolve(path.dirname(parentPath), request);
+  const extension = path.extname(requestedPath);
+  const candidates = extension
+    ? [requestedPath]
+    : [
+        requestedPath,
+        `${requestedPath}.js`,
+        `${requestedPath}.cjs`,
+        `${requestedPath}.json`,
+        path.join(requestedPath, "index.js"),
+        path.join(requestedPath, "index.cjs"),
+        path.join(requestedPath, "index.json"),
+      ];
+  const resolved = await firstFile(candidates);
+  if (!resolved) {
+    throw new Error(`Cannot find module '${request}' from ${parentPath}`);
+  }
+  return resolved;
+}
+
+export async function bundleLocalModules(jobPath, source) {
+  const modules = {};
+  const visited = new Set([jobPath]);
+
+  const visit = async (modulePath, moduleSource) => {
+    const json = path.extname(modulePath).toLowerCase() === ".json";
+    const dependencies = {};
+    const requests = json ? [] : findRelativeRequires(moduleSource);
+    for (const request of requests) {
+      const dependencyPath = await resolveLocalModule(modulePath, request);
+      dependencies[request] = dependencyPath;
+      if (!visited.has(dependencyPath)) {
+        visited.add(dependencyPath);
+        const dependencySource = await readFile(dependencyPath, "utf8");
+        await visit(dependencyPath, dependencySource);
+      }
+    }
+    modules[modulePath] = {
+      dependencies,
+      json,
+      source: moduleSource,
+    };
+  };
+
+  await visit(jobPath, source);
+  return modules;
+}
+
+function blockbenchJobBootstrap(
+  source,
+  jobPath,
+  outDir,
+  jobArgs,
+  bundledModules,
+) {
   return (async () => {
     const startedAt = Date.now();
     const artifacts = [];
@@ -450,24 +541,64 @@ function blockbenchJobBootstrap(source, jobPath, outDir, jobArgs) {
       },
     };
 
-    const module = { exports: {} };
-    const sourceUrl = jobPath.replaceAll("\\", "/");
-    const factory = new Function(
-      "module",
-      "exports",
-      "__filename",
-      "__dirname",
-      `${source}\n//# sourceURL=${sourceUrl}`,
-    );
-    factory.call(
-      globalThis,
-      module,
-      module.exports,
-      jobPath,
-      jobPath.replace(/[\\/][^\\/]*$/, ""),
-    );
+    const moduleRecords = {
+      ...(bundledModules || {}),
+      [jobPath]: bundledModules?.[jobPath] || {
+        dependencies: {},
+        json: false,
+        source,
+      },
+    };
+    const moduleCache = new Map();
 
-    const build = module.exports?.default ?? module.exports;
+    function loadModule(modulePath) {
+      if (moduleCache.has(modulePath)) {
+        return moduleCache.get(modulePath).exports;
+      }
+      const record = moduleRecords[modulePath];
+      if (!record) {
+        throw new Error(`Blockbench job module was not bundled: ${modulePath}`);
+      }
+
+      const loadedModule = { exports: {} };
+      moduleCache.set(modulePath, loadedModule);
+      if (record.json) {
+        loadedModule.exports = JSON.parse(record.source);
+        return loadedModule.exports;
+      }
+
+      const localRequire = (request) => {
+        const dependencyPath = record.dependencies[request];
+        if (!dependencyPath) {
+          throw new Error(
+            `Cannot require '${request}' from ${modulePath}. ` +
+              "Blockbench jobs can only require bundled relative files.",
+          );
+        }
+        return loadModule(dependencyPath);
+      };
+      const sourceUrl = modulePath.replaceAll("\\", "/");
+      const factory = new Function(
+        "module",
+        "exports",
+        "require",
+        "__filename",
+        "__dirname",
+        `${record.source}\n//# sourceURL=${sourceUrl}`,
+      );
+      factory.call(
+        globalThis,
+        loadedModule,
+        loadedModule.exports,
+        localRequire,
+        modulePath,
+        modulePath.replace(/[\\/][^\\/]*$/, ""),
+      );
+      return loadedModule.exports;
+    }
+
+    const jobModule = loadModule(jobPath);
+    const build = jobModule?.default ?? jobModule;
     if (typeof build !== "function") {
       throw new TypeError(
         "the Blockbench job must export a function with module.exports",
@@ -501,12 +632,19 @@ function blockbenchJobBootstrap(source, jobPath, outDir, jobArgs) {
   })();
 }
 
-export function buildJobExpression(source, jobPath, outDir, jobArgs = []) {
+export function buildJobExpression(
+  source,
+  jobPath,
+  outDir,
+  jobArgs = [],
+  bundledModules = undefined,
+) {
   return `(${blockbenchJobBootstrap.toString()})(${[
     source,
     jobPath,
     outDir,
     jobArgs,
+    bundledModules ?? null,
   ]
     .map((value) => JSON.stringify(value))
     .join(", ")})`;
@@ -709,6 +847,7 @@ async function runJob(options) {
 
   const executable = findBlockbenchExecutable(options.blockbench);
   const source = await readFile(options.jobPath, "utf8");
+  const bundledModules = await bundleLocalModules(options.jobPath, source);
   const profileDirectory = await mkdtemp(
     path.join(os.tmpdir(), "blockbench-batch-"),
   );
@@ -776,6 +915,7 @@ async function runJob(options) {
         options.jobPath,
         options.outDir,
         options.jobArgs,
+        bundledModules,
       ),
       remainingTime(deadline),
     );

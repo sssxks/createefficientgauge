@@ -33,3 +33,21 @@ module.exports = async function build({ output, log, args }) {
     return { cube: cube.name, arguments: args };
 };
 ```
+
+Jobs may use `require()` with literal relative paths to `.js`, `.cjs`, and
+`.json` files. The runner recursively bundles those local dependencies before
+evaluating the job, so reusable helpers can live outside the job file. Package
+and Node built-in imports are not available inside Blockbench jobs.
+
+```js
+const { metalPainter } = require("./texture-painters.cjs");
+```
+
+Reusable helpers included with the runner:
+
+- `texture-painters.cjs` provides deterministic canvas color, noise, bevel,
+  metal, wood, panel, and bore painters.
+- `cuboid-geometry.cjs` describes rotated cuboid faces, detects fully occluded
+  faces, and measures coplanar overlaps.
+- `texture-overlap.cjs` maps between face and texture coordinates and blends
+  atlas pixels for same-facing coplanar geometry.

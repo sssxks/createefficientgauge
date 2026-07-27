@@ -9,6 +9,7 @@ import vm from "node:vm";
 import {
     blockbenchCandidates,
     buildJobExpression,
+    bundleLocalModules,
     findBlockbenchExecutable,
     parseArgs,
     reserveLocalPort,
@@ -70,6 +71,55 @@ test("buildJobExpression safely embeds source code, paths, and arguments", () =>
     assert.match(expression, /blockbenchJobBootstrap/);
     assert.ok(expression.includes(JSON.stringify(source)));
     assert.ok(expression.includes(JSON.stringify(["one", "two"])));
+});
+
+test("the embedded job runtime loads bundled relative CommonJS modules", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "blockbench-bundle-test-"));
+    const jobPath = path.join(directory, "job.bb.js");
+    const helperPath = path.join(directory, "helper.cjs");
+    const dataPath = path.join(directory, "data.json");
+    const source = `
+        const helper = require("./helper.cjs");
+        module.exports = async () => helper();
+    `;
+
+    try {
+        await writeFile(jobPath, source);
+        await writeFile(
+            helperPath,
+            `
+                const data = require("./data.json");
+                module.exports = () => ({ answer: data.value });
+            `,
+        );
+        await writeFile(dataPath, '{"value":42}');
+        const bundledModules = await bundleLocalModules(jobPath, source);
+        const result = await vm.runInNewContext(
+            buildJobExpression(
+                source,
+                jobPath,
+                path.join(directory, "generated"),
+                [],
+                bundledModules,
+            ),
+            {
+                Blockbench: { version: "test" },
+                Codecs: { java_block: { compile: () => "{}" } },
+                Preview: {},
+                Texture: {},
+                console,
+                setTimeout,
+            },
+        );
+
+        assert.deepEqual(
+            JSON.parse(JSON.stringify(result.result)),
+            { answer: 42 },
+        );
+        assert.equal(Object.keys(bundledModules).length, 3);
+    } finally {
+        await rm(directory, { force: true, recursive: true });
+    }
 });
 
 test("the embedded job runtime writes only declared artifacts under outDir", async () => {

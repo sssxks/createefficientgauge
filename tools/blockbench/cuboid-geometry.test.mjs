@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import test from "node:test";
 
 const require = createRequire(import.meta.url);
-const { geometry } = require("./handheld_cannon.bb.js");
+const geometry = require("./cuboid-geometry.cjs");
 
 test("removes both complete faces at a cuboid seam", () => {
     const cubes = [
